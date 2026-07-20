@@ -38,8 +38,9 @@ describe("traffic sim", () => {
   });
 
   it("wraps around the world edge", () => {
-    let cars: TrafficCar[] = [{ id: 0, x: 2.75, z: 168, heading: 0, speed: TRAFFIC_SPEED }];
-    for (let i = 0; i < 120; i += 1) cars = stepTraffic(cars, 1 / 60);
+    // Start near the +z edge and drive past it; it should reappear at -z.
+    let cars: TrafficCar[] = [{ id: 0, x: 2.75, z: 305, heading: 0, speed: TRAFFIC_SPEED }];
+    for (let i = 0; i < 180; i += 1) cars = stepTraffic(cars, 1 / 60);
     expect(cars[0]!.z).toBeLessThan(0); // wrapped to the far side
   });
 

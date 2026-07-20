@@ -13,9 +13,9 @@ export const LANE = ROAD_HALF / 2;
 /** Limit line / stop distance just outside the junction box. */
 export const LINE_OFFSET = ROAD_HALF + 0.6;
 /** Ground size (square, centred on the origin). */
-export const WORLD = 340;
+export const WORLD = 620;
 /** Road centrelines on each axis. Their cross products are the intersections. */
-export const ROADS: readonly number[] = [-120, -60, 0, 60, 120];
+export const ROADS: readonly number[] = [-240, -180, -120, -60, 0, 60, 120, 180, 240];
 
 export interface Intersection {
   cx: number;

@@ -43,9 +43,15 @@ export function createTraffic(): TrafficCar[] {
     { x: -LANE, z: 90, heading: Math.PI }, // southbound, x=0 road
     { x: 60 + LANE, z: -40, heading: 0 }, // northbound, x=60 road
     { x: -60 - LANE, z: 50, heading: Math.PI }, // southbound, x=-60 road
+    { x: 120 + LANE, z: 30, heading: 0 }, // northbound, x=120 road
+    { x: -120 - LANE, z: -80, heading: Math.PI }, // southbound, x=-120 road
+    { x: 180 + LANE, z: -150, heading: 0 }, // northbound, x=180 road
     { x: -70, z: -LANE, heading: Math.PI / 2 }, // eastbound, z=0 road
     { x: 40, z: -LANE, heading: Math.PI / 2 },
     { x: 70, z: LANE, heading: -Math.PI / 2 }, // westbound, z=0 road
+    { x: -140, z: 60 - LANE, heading: Math.PI / 2 }, // eastbound, z=60 road
+    { x: 150, z: -120 + LANE, heading: -Math.PI / 2 }, // westbound, z=-120 road
+    { x: -30, z: 120 - LANE, heading: Math.PI / 2 }, // eastbound, z=120 road
   ];
   return specs.map((s, id) => ({ id, speed: TRAFFIC_SPEED, ...s }));
 }
