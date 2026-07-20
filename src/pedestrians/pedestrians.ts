@@ -4,7 +4,7 @@
  * Heading convention matches driving.ts: forward = (sin h, cos h).
  */
 
-import { LINE_OFFSET } from "../rules/roadGrid";
+import { LINE_OFFSET, ROAD_HALF } from "../rules/roadGrid";
 
 export interface Pedestrian {
   id: number;
@@ -19,25 +19,57 @@ export interface Pedestrian {
   dir: number;
   /** Seconds left pausing at a kerb. */
   wait: number;
+  /** True at a marked (zebra-striped) crosswalk, false at an unmarked one. */
+  striped: boolean;
+}
+
+/** A pedestrian crossing: path endpoints, initial phase, and crosswalk type. */
+export interface CrossingSpec {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  /** Initial position along the path, 0..1. */
+  t: number;
+  /** Marked (zebra) crosswalk vs unmarked — drivers yield for different durations. */
+  striped: boolean;
 }
 
 export const PED_SPEED = 1.4; // m/s
 const PAUSE = 2.5;
 const L = LINE_OFFSET; // crosswalks sit at the limit lines
+/** How far ahead a car reacts to a crosswalk (m). */
+export const PED_APPROACH_M = 10;
 
-/** Crossing paths + initial phase for each pedestrian (shared with the scene so
- *  crosswalk markings line up). [ax, az, bx, bz, t0]. */
-export const CROSSINGS: ReadonlyArray<readonly [number, number, number, number, number]> = [
-  [-7, L, 7, L, 0.15], // north crosswalk of the origin, crossing in X
-  [-7, -L, 7, -L, 0.55], // south crosswalk of the origin
-  [L, -7, L, 7, 0.8], // east crosswalk of the origin, crossing in Z
-  [60 - L, -7, 60 - L, 7, 0.35], // west crosswalk of the (60,0) intersection
-  [-7, 60 - L, 7, 60 - L, 0.65], // south crosswalk of the (0,60) intersection
+/** Crossing paths for each pedestrian (shared with the scene so crosswalk
+ *  markings line up). Striped crossings get painted zebra stripes; unmarked
+ *  ones do not, and the two carry different yield rules. */
+export const CROSSINGS: readonly CrossingSpec[] = [
+  // Marked (zebra) crosswalks — yield until the pedestrian is entirely across.
+  { ax: -7, az: L, bx: 7, bz: L, t: 0.15, striped: true }, // north crosswalk of the origin (X)
+  { ax: -7, az: -L, bx: 7, bz: -L, t: 0.55, striped: true }, // south crosswalk of the origin
+  { ax: L, az: -7, bx: L, bz: 7, t: 0.8, striped: true }, // east crosswalk of the origin (Z)
+  { ax: 60 - L, az: -7, bx: 60 - L, bz: 7, t: 0.35, striped: true }, // west of (60,0)
+  { ax: -7, az: 60 - L, bx: 7, bz: 60 - L, t: 0.65, striped: true }, // south of (0,60)
+  // Unmarked crosswalks — yield only until the pedestrian passes the road centre.
+  { ax: -7, az: -60 + L, bx: 7, bz: -60 + L, t: 0.3, striped: false }, // north of (0,-60) (X)
+  { ax: -60 + L, az: -7, bx: -60 + L, bz: 7, t: 0.5, striped: false }, // east of (-60,0) (Z)
+  { ax: -7, az: 60 + L, bx: 7, bz: 60 + L, t: 0.7, striped: false }, // north of (0,60) (X)
 ];
 
 /** Deterministic pedestrians crossing roads near the starting area. */
 export function createPedestrians(): Pedestrian[] {
-  return CROSSINGS.map(([ax, az, bx, bz, t], id) => ({ id, ax, az, bx, bz, t, dir: 1, wait: 0 }));
+  return CROSSINGS.map((c, id) => ({
+    id,
+    ax: c.ax,
+    az: c.az,
+    bx: c.bx,
+    bz: c.bz,
+    t: c.t,
+    dir: 1,
+    wait: 0,
+    striped: c.striped,
+  }));
 }
 
 /** World position of a pedestrian. */
@@ -73,8 +105,13 @@ export function stepPedestrians(peds: readonly Pedestrian[], dt: number): Pedest
 }
 
 /**
- * Whether a pedestrian is in the car's path ahead (in-lane, close), i.e. one the
- * driver must yield to.
+ * Whether a pedestrian in a crosswalk ahead is one the driver must still yield
+ * to. The duty differs by crosswalk type (California rules):
+ *
+ *  - Marked (striped) crosswalk: yield until the pedestrian is *entirely out*
+ *    of the crosswalk — i.e. anywhere on the roadway still counts.
+ *  - Unmarked crosswalk: yield only until the pedestrian passes the centre of
+ *    the road (mid-block); once they cross to the far half, the car may go.
  */
 export function pedestrianHazard(
   px: number,
@@ -86,10 +123,25 @@ export function pedestrianHazard(
   const fz = Math.cos(heading);
   return peds.some((ped) => {
     const { x, z } = pedestrianPos(ped);
-    const dx = x - px;
-    const dz = z - pz;
-    const forward = dx * fx + dz * fz;
-    if (forward <= 0 || forward > 9) return false;
-    return Math.abs(dx * fz - dz * fx) < 2.6;
+    // The crosswalk must be ahead of the car, within reaction distance.
+    const forward = (x - px) * fx + (z - pz) * fz;
+    if (forward <= 0 || forward > PED_APPROACH_M) return false;
+
+    // Coordinates measured across the road (the pedestrian's direction of travel).
+    const axisIsX = Math.abs(ped.bz - ped.az) < 0.01; // pedestrian walks along X
+    const carAcross = axisIsX ? px : pz;
+    const pedAcross = axisIsX ? x : z;
+    const lo = axisIsX ? Math.min(ped.ax, ped.bx) : Math.min(ped.az, ped.bz);
+    const hi = axisIsX ? Math.max(ped.ax, ped.bx) : Math.max(ped.az, ped.bz);
+    if (carAcross < lo - 1 || carAcross > hi + 1) return false; // car isn't on this road
+
+    const centre = (lo + hi) / 2;
+    const pedFromCentre = pedAcross - centre;
+    if (Math.abs(pedFromCentre) > ROAD_HALF + 0.5) return false; // pedestrian off the road
+
+    // Marked: still on the roadway → keep yielding until they are entirely out.
+    if (ped.striped) return true;
+    // Unmarked: only while the pedestrian is still on the car's half of the road.
+    return Math.sign(pedFromCentre) === Math.sign(carAcross - centre);
   });
 }
