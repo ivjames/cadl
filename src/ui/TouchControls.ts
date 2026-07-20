@@ -9,9 +9,10 @@ export interface TouchControlsOptions {
 }
 
 /**
- * Wire an analog pedal: the throttle/brake demand is how far down the button
- * the finger presses (top edge ≈ 0, bottom edge = 1). Dragging up/down while
- * held feathers it, and a fill level (`--pedal`) shows how much is applied.
+ * Wire an analog pedal: the throttle/brake demand is how far up the button the
+ * finger presses (bottom edge ≈ 0, top edge = 1) — swipe up for more, down for
+ * less. A fill level (`--pedal`) rises from the bottom to show how much is
+ * applied, meeting the finger at the top on full.
  */
 function bindPedal(id: string, set: (value: number) => void): void {
   const el = document.getElementById(id);
@@ -19,7 +20,8 @@ function bindPedal(id: string, set: (value: number) => void): void {
 
   const level = (event: PointerEvent): number => {
     const r = el.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (event.clientY - r.top) / r.height));
+    // Inverted: top edge = full, bottom edge = 0.
+    return Math.max(0, Math.min(1, 1 - (event.clientY - r.top) / r.height));
   };
   const apply = (value: number): void => {
     set(value);
