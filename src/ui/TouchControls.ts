@@ -3,6 +3,8 @@ import type { DrivingInput, HeldControl } from "../input/DrivingInput";
 export interface TouchControlsOptions {
   onToggleCamera: () => void;
   onReset: () => void;
+  onSignalLeft: () => void;
+  onSignalRight: () => void;
 }
 
 /** Wire a hold-to-activate button (steer/gas/brake) to a driving control. */
@@ -65,6 +67,8 @@ export function setupTouchControls(input: DrivingInput, options: TouchControlsOp
   bindHold("brakeButton", input, "brake");
   bindTap("cameraButton", options.onToggleCamera);
   bindTap("resetButton", options.onReset);
+  bindTap("signalLeft", options.onSignalLeft);
+  bindTap("signalRight", options.onSignalRight);
 
   // Block iOS Safari pinch-zoom / double-tap zoom over the controls & canvas.
   for (const type of ["gesturestart", "gesturechange", "gestureend"]) {

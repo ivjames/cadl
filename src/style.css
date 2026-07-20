@@ -44,8 +44,8 @@ body {
   top: calc(env(safe-area-inset-top) + 0.9rem);
   left: calc(env(safe-area-inset-left) + 0.9rem);
   display: flex;
-  gap: 0.75rem;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 0.4rem;
   padding: 0.6rem 0.95rem;
   border: 1px solid var(--panel-border);
   border-radius: 0.75rem;
@@ -55,10 +55,24 @@ body {
   backdrop-filter: blur(6px);
 }
 
+.hud-row {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+}
+
 #hud strong {
   letter-spacing: 0.08em;
   font-size: 0.85rem;
   opacity: 0.8;
+}
+
+.hud-gear {
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0 0.4rem;
+  border-radius: 0.35rem;
+  background: rgb(255 255 255 / 12%);
 }
 
 #speed {
@@ -66,6 +80,102 @@ body {
   font-size: 1.4rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+#speed.over-limit {
+  color: #ff6b5e;
+}
+
+.hud-sub {
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  background: #fff;
+  color: #111;
+  border-radius: 0.3rem;
+  font-weight: 700;
+}
+
+.limit-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.limit-unit {
+  font-size: 0.6rem;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.zone-label {
+  color: #d7e34a;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.signal-ind {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.signal-ind .ind {
+  opacity: 0.2;
+  color: #ffb020;
+  font-size: 1rem;
+}
+
+.signal-ind .ind.on {
+  opacity: 1;
+  animation: blink 0.9s steps(1, end) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.stop-cue {
+  align-self: flex-start;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.3rem;
+  background: #b32217;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+
+.stop-cue[hidden] {
+  display: none;
+}
+
+/* Turn-signal buttons, bottom-centre */
+#signalControls {
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  gap: 1.2rem;
+}
+
+.signal-button {
+  width: 3.6rem;
+  height: 3.6rem;
+  border-radius: 0.9rem;
+  font-size: 1.3rem;
+  color: #ffb020;
+}
+
+.signal-button.on {
+  background: rgb(255 176 32 / 30%);
+  border-color: rgb(255 176 32 / 70%);
+  animation: blink 0.9s steps(1, end) infinite;
 }
 
 /* --- Control clusters --- */

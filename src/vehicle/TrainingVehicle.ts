@@ -22,9 +22,19 @@ export class TrainingVehicle {
   /** Invisible pivot at ground level; the camera target and motion carrier. */
   readonly root: Mesh;
   private state: CarState = spawnState();
+  // One material per side; toggling its emissive blinks both lights on that side.
+  private readonly blinkerLeftMat: StandardMaterial;
+  private readonly blinkerRightMat: StandardMaterial;
+  private readonly amberOn = new Color3(1, 0.62, 0);
+  private readonly amberOff = new Color3(0.32, 0.2, 0.03);
 
   constructor(scene: Scene) {
     this.root = new Mesh("vehicleRoot", scene);
+
+    this.blinkerLeftMat = new StandardMaterial("blinkerLeft", scene);
+    this.blinkerLeftMat.diffuseColor = this.amberOff.clone();
+    this.blinkerRightMat = new StandardMaterial("blinkerRight", scene);
+    this.blinkerRightMat.diffuseColor = this.amberOff.clone();
 
     const paint = new StandardMaterial("carPaint", scene);
     paint.diffuseColor = new Color3(0.06, 0.35, 0.65);
@@ -102,7 +112,38 @@ export class TrainingVehicle {
       light.parent = this.root;
     }
 
+    // Amber blinkers at all four corners (front z=+, rear z=-; left x=-, right x=+).
+    const blinkerSpecs: Array<[string, number, number, StandardMaterial]> = [
+      ["blinkFL", -0.85, 1.95, this.blinkerLeftMat],
+      ["blinkRL", -0.85, -1.95, this.blinkerLeftMat],
+      ["blinkFR", 0.85, 1.95, this.blinkerRightMat],
+      ["blinkRR", 0.85, -1.95, this.blinkerRightMat],
+    ];
+    for (const [name, bx, bz, mat] of blinkerSpecs) {
+      const light = CreateBox(name, { width: 0.22, height: 0.18, depth: 0.16 }, scene);
+      light.material = mat;
+      light.position.set(bx, 0.55, bz);
+      light.parent = this.root;
+    }
+
     this.syncTransform();
+  }
+
+  /** Light or clear the blinkers on one side (call each frame from a blink timer). */
+  setBlinkers(side: "left" | "right" | null, on: boolean): void {
+    this.blinkerLeftMat.emissiveColor = side === "left" && on ? this.amberOn : this.amberOff;
+    this.blinkerRightMat.emissiveColor = side === "right" && on ? this.amberOn : this.amberOff;
+  }
+
+  /** Position, heading, and speed for the HUD and rule checks. */
+  get pose(): { x: number; z: number; heading: number; speed: number; speedMph: number } {
+    return {
+      x: this.state.x,
+      z: this.state.z,
+      heading: this.state.heading,
+      speed: this.state.speed,
+      speedMph: this.speedMph,
+    };
   }
 
   /** Advance the simulation one frame and push the result onto the meshes. */
@@ -114,6 +155,7 @@ export class TrainingVehicle {
   /** Return to spawn position, heading, and zero speed. */
   reset(): void {
     this.state = spawnState();
+    this.setBlinkers(null, false);
     this.syncTransform();
   }
 
