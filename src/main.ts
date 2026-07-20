@@ -204,6 +204,16 @@ engine.runRenderLoop(() => {
   vehicle.update(drive, dt, trafficRects);
   const pose = vehicle.pose;
 
+  // Brake lights follow the (analog) brake pedal.
+  vehicle.setBrakeLights(drive.brake > 0.05);
+
+  // Lock the chase camera tight behind the car while turning so it tracks the
+  // heading instead of lazily swinging; ease it back to a smooth lag on
+  // straights. (The overview camera recomputes each frame and needs no help.)
+  const turning = Math.abs(drive.steer) > 0.15 && Math.abs(pose.speed) > 0.5;
+  followCamera.cameraAcceleration = turning ? 0.6 : 0.09;
+  followCamera.maxCameraSpeed = turning ? 90 : 24;
+
   // If the car wrapped across the world edge, jump the chase camera with it so
   // it doesn't fly across the whole map trying to catch up. (The overview cam
   // recomputes from its target each frame, so it needs no help.)
