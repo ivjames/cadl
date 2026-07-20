@@ -35,6 +35,18 @@ describe("stopSignAhead", () => {
     expect(stopSignAhead(2.75, -20, Math.PI / 2)).toBeNull();
   });
 
+  it("ignores a stop when the car is far off to the side of the lane", () => {
+    // ~26 m from the south control and roughly aligned, but 22 m off the road.
+    expect(stopSignAhead(-20, -20, 0)).toBeNull();
+  });
+
+  it("reports the forward distance to the limit line, not the euclidean offset", () => {
+    // Slightly off lane centre (within tolerance) but the distance is longitudinal.
+    const ahead = stopSignAhead(0, -20, 0); // spawn lane; control S is at z = -6.1
+    expect(ahead).not.toBeNull();
+    expect(ahead!.distance).toBeCloseTo(20 - 6.1, 1);
+  });
+
   it("sees the west limit line when driving east toward it", () => {
     const ahead = stopSignAhead(-20, -2.75, Math.PI / 2);
     expect(ahead).not.toBeNull();
