@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TRAFFIC_SPEED,
   createTraffic,
+  hitsCar,
   leadGapFor,
   stepTraffic,
   turnDecisionFor,
@@ -78,6 +79,20 @@ describe("traffic sim", () => {
       { id: 1, x: -2.75, z: 20, heading: 0, speed: 0 }, // other lane
     ];
     expect(leadGapFor({ x: 2.75, z: 5, heading: 0 }, cars)).toBeNull();
+  });
+});
+
+describe("hitsCar", () => {
+  const cars: TrafficCar[] = [{ id: 0, x: 2.75, z: 0, heading: 0, speed: 0 }];
+
+  it("flags the player overlapping a car's footprint", () => {
+    expect(hitsCar(2.75, 0, cars)).toBe(true); // dead centre
+    expect(hitsCar(2.75, 3.5, cars)).toBe(true); // just off the front bumper
+  });
+
+  it("is clear when the player keeps a gap", () => {
+    expect(hitsCar(2.75, 6, cars)).toBe(false); // a couple metres back
+    expect(hitsCar(-2.75, 0, cars)).toBe(false); // the oncoming lane over
   });
 });
 
