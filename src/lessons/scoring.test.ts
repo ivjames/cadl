@@ -21,6 +21,8 @@ const base: DrivingSample = {
   pedestrianAhead: false,
   parked: false,
   offRoad: false,
+  hitCar: false,
+  hitPedestrian: false,
 };
 
 function feed(coach: DrivingCoach, sample: Partial<DrivingSample>, frames: number, dt = 1 / 60): void {
@@ -146,6 +148,39 @@ describe("DrivingCoach — parking", () => {
     feed(coach, { parked: false }, 10);
     feed(coach, { parked: true }, 60); // back in again
     expect(coach.achievements.filter((a) => a.kind === "parked").length).toBe(1);
+  });
+});
+
+describe("DrivingCoach — collisions", () => {
+  it("faults hitting another car, once per contact", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { hitCar: true }, 30); // grinding against it
+    expect(coach.violations.filter((v) => v.kind === "hitCar").length).toBe(1);
+    expect(coach.score).toBe(100 - PENALTIES.hitCar);
+  });
+
+  it("re-faults a car hit only after separating", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { hitCar: true }, 20);
+    feed(coach, { hitCar: false }, 10);
+    feed(coach, { hitCar: true }, 20);
+    expect(coach.violations.filter((v) => v.kind === "hitCar").length).toBe(2);
+  });
+
+  it("faults hitting a pedestrian and hits the score hardest", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { hitPedestrian: true }, 30);
+    expect(coach.violations.filter((v) => v.kind === "hitPedestrian").length).toBe(1);
+    expect(coach.score).toBe(100 - PENALTIES.hitPedestrian);
+  });
+
+  it("scores both when a car and a pedestrian are struck together", () => {
+    const coach = new DrivingCoach();
+    const event = coach.observe({ ...base, hitCar: true, hitPedestrian: true }, 1 / 60);
+    expect(coach.hasViolation("hitCar")).toBe(true);
+    expect(coach.hasViolation("hitPedestrian")).toBe(true);
+    // The pedestrian (graver) wins the frame's surfaced event.
+    expect(event?.type === "violation" && event.kind).toBe("hitPedestrian");
   });
 });
 

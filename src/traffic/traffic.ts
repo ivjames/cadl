@@ -11,6 +11,7 @@
 
 import { LANE, LINE_OFFSET, ROAD_HALF, ROADS, wrapWorld } from "../rules/roadGrid";
 import { angleDifference } from "../rules/stopControls";
+import { CAR_RADIUS } from "../rules/obstacles";
 
 export interface TrafficCar {
   id: number;
@@ -265,6 +266,29 @@ export function stepTraffic(
       return { ...car, speed, x, z, clearedKey, waited, turnedKey: key };
     }
     return { ...car, speed, x, z, clearedKey, waited };
+  });
+}
+
+/** Half-extents of a traffic car's footprint (across × along), matching the
+ *  collision rects the player is blocked by. */
+export const CAR_HALF_W = 1.3;
+export const CAR_HALF_D = 2.6;
+
+/**
+ * Whether the player (a circle of {@link CAR_RADIUS}) is in contact with any
+ * traffic car's footprint — i.e. a fender-bender. `tol` adds a little slack so
+ * the touch registers right at the collision boundary the physics stops at.
+ */
+export function hitsCar(
+  px: number,
+  pz: number,
+  cars: readonly TrafficCar[],
+  tol = 0.2,
+): boolean {
+  return cars.some((c) => {
+    const dx = Math.max(Math.abs(px - c.x) - CAR_HALF_W, 0);
+    const dz = Math.max(Math.abs(pz - c.z) - CAR_HALF_D, 0);
+    return Math.hypot(dx, dz) <= CAR_RADIUS + tol;
   });
 }
 

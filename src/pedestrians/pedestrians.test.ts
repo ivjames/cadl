@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createPedestrians,
+  pedestrianContact,
   pedestrianHazard,
   pedestrianPos,
   stepPedestrians,
@@ -60,6 +61,18 @@ describe("pedestrianHazard — marked (striped) crosswalk", () => {
   it("ignores a crosswalk behind the car", () => {
     const peds = [ped({ az: -8, bz: -8, striped: true })];
     expect(pedestrianHazard(car.px, car.pz, car.heading, peds)).toBe(false);
+  });
+});
+
+describe("pedestrianContact", () => {
+  it("flags the car running over a pedestrian", () => {
+    const peds = [ped({ ax: 0, az: 0, bx: 0, bz: 0 })]; // at the origin
+    expect(pedestrianContact(0.5, 0.5, peds)).toBe(true);
+  });
+
+  it("is clear when the car passes at a distance", () => {
+    const peds = [ped({ ax: 0, az: 0, bx: 0, bz: 0 })];
+    expect(pedestrianContact(3, 0, peds)).toBe(false);
   });
 });
 

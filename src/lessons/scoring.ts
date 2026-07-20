@@ -37,6 +37,10 @@ export interface DrivingSample {
   parked: boolean;
   /** Whether the car is off the paved roadway (on grass/sidewalk). */
   offRoad: boolean;
+  /** Whether the car is in contact with another car this frame. */
+  hitCar: boolean;
+  /** Whether the car has run into a pedestrian this frame. */
+  hitPedestrian: boolean;
 }
 
 export type ViolationKind =
@@ -47,7 +51,9 @@ export type ViolationKind =
   | "yield"
   | "block"
   | "pedestrian"
-  | "offRoad";
+  | "offRoad"
+  | "hitCar"
+  | "hitPedestrian";
 /** Positive things a lesson can require the driver to do. */
 export type AchievementKind =
   | "cleanStop"
@@ -81,6 +87,8 @@ export const PENALTIES: Record<ViolationKind, number> = {
   block: 10,
   pedestrian: 20,
   offRoad: 12,
+  hitCar: 25,
+  hitPedestrian: 40,
 };
 
 /** Speed (mph) below which the car counts as fully stopped. */
@@ -161,6 +169,9 @@ export class DrivingCoach {
   // Off-road hysteresis.
   private offRoadTime = 0;
   private offRoadActive = false;
+  // Collision latches — one penalty per contact, re-armed on separation.
+  private hitCarActive = false;
+  private hitPedActive = false;
   // Positive: sustained time crawling for a pedestrian ahead, and a one-shot latch.
   private pedYieldTime = 0;
   private pedYieldAwarded = false;
@@ -222,6 +233,8 @@ export class DrivingCoach {
     this.pedActive = false;
     this.offRoadTime = 0;
     this.offRoadActive = false;
+    this.hitCarActive = false;
+    this.hitPedActive = false;
     this.pedYieldTime = 0;
     this.pedYieldAwarded = false;
     this.parkTime = 0;
@@ -246,6 +259,7 @@ export class DrivingCoach {
     this.prevHeading = sample.heading;
 
     return (
+      this.checkCollisions(sample) ??
       this.checkPedestrian(sample, dt) ??
       this.checkOffRoad(sample, dt) ??
       this.checkSpeeding(sample, dt) ??
@@ -270,6 +284,31 @@ export class DrivingCoach {
       this.parkTime = 0;
     }
     return null;
+  }
+
+  private checkCollisions(sample: DrivingSample): CoachEvent | null {
+    // Each collision is scored once on contact and re-armed only after the car
+    // separates, so grinding against a car doesn't drain the score every frame.
+    // Hitting a pedestrian is the graver fault, so it wins the frame's flash.
+    let event: CoachEvent | null = null;
+    if (sample.hitPedestrian) {
+      if (!this.hitPedActive) {
+        this.hitPedActive = true;
+        event = this.emit("hitPedestrian", "You hit a pedestrian");
+      }
+    } else {
+      this.hitPedActive = false;
+    }
+    if (sample.hitCar) {
+      if (!this.hitCarActive) {
+        this.hitCarActive = true;
+        const carEvent = this.emit("hitCar", "Collision with another car");
+        event = event ?? carEvent;
+      }
+    } else {
+      this.hitCarActive = false;
+    }
+    return event;
   }
 
   private checkPedestrian(sample: DrivingSample, dt: number): CoachEvent | null {

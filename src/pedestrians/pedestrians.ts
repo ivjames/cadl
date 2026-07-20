@@ -113,6 +113,18 @@ export function stepPedestrians(peds: readonly Pedestrian[], dt: number): Pedest
  *  - Unmarked crosswalk: yield only until the pedestrian passes the centre of
  *    the road (mid-block); once they cross to the far half, the car may go.
  */
+/** Distance (m) within which the car is judged to have struck a pedestrian. */
+export const PED_CONTACT_M = 1.5;
+
+/** Whether the car has run into a pedestrian (they don't block the car, so it
+ *  can drive right over one — this is what flags that it did). */
+export function pedestrianContact(px: number, pz: number, peds: readonly Pedestrian[]): boolean {
+  return peds.some((ped) => {
+    const { x, z } = pedestrianPos(ped);
+    return Math.hypot(x - px, z - pz) <= PED_CONTACT_M;
+  });
+}
+
 export function pedestrianHazard(
   px: number,
   pz: number,

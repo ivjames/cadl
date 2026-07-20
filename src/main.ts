@@ -12,9 +12,14 @@ import "./style.css";
 import { DrivingInput } from "./input/DrivingInput";
 import { createEnvironment } from "./scene/createEnvironment";
 import { TrafficView } from "./scene/TrafficView";
-import { createTraffic, leadGapFor, stepTraffic } from "./traffic/traffic";
+import { createTraffic, hitsCar, leadGapFor, stepTraffic } from "./traffic/traffic";
 import { PedestrianView } from "./scene/PedestrianView";
-import { createPedestrians, pedestrianHazard, stepPedestrians } from "./pedestrians/pedestrians";
+import {
+  createPedestrians,
+  pedestrianContact,
+  pedestrianHazard,
+  stepPedestrians,
+} from "./pedestrians/pedestrians";
 import { ParkingBayView } from "./scene/ParkingBayView";
 import { isParked } from "./rules/parking";
 import { setupTouchControls } from "./ui/TouchControls";
@@ -269,6 +274,8 @@ engine.runRenderLoop(() => {
   const bay = LESSONS[lessonIndex]?.bay;
   const parked = bay ? isParked(bay, pose.x, pose.z, pose.heading, pose.speedMph) : false;
   const offRoad = !onRoad(pose.x, pose.z);
+  const hitCar = hitsCar(pose.x, pose.z, traffic);
+  const hitPedestrian = pedestrianContact(pose.x, pose.z, pedestrians);
   const event = runner.observe(
     {
       heading: pose.heading,
@@ -283,6 +290,8 @@ engine.runRenderLoop(() => {
       pedestrianAhead,
       parked,
       offRoad,
+      hitCar,
+      hitPedestrian,
     },
     dt,
   );
