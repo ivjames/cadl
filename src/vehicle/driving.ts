@@ -23,10 +23,12 @@ export interface CarState {
 export interface DriveInput {
   /** Accelerator, 0..1. */
   gas: number;
-  /** Brake / reverse, 0..1. */
+  /** Brake, 0..1. Decelerates toward a stop from either direction. */
   brake: number;
   /** Steering, -1 (full left) .. 1 (full right). */
   steer: number;
+  /** Reverse gear: when true, the accelerator drives backward. */
+  reverse: boolean;
 }
 
 /**
@@ -40,16 +42,15 @@ export const SPAWN: Readonly<CarState> = { x: 2.75, z: -22, heading: 0, speed: 0
 export const DRIVING = {
   /** Forward acceleration at full gas (m/s²). */
   forwardAccel: 6,
-  /** Reverse acceleration (m/s²). Reserved for a future dedicated reverse/gear
-   *  control — the brake no longer engages reverse. */
+  /** Reverse acceleration in reverse gear at full gas (m/s²). */
   reverseAccel: 4,
-  /** Braking deceleration when rolling forward (m/s²). */
+  /** Braking deceleration; bleeds speed toward zero from either direction (m/s²). */
   brakeDecel: 14,
   /** Passive drag when coasting (m/s²). */
   drag: 4,
   /** Top forward speed (m/s ≈ 45 mph). */
   maxForward: 20,
-  /** Top reverse speed (m/s ≈ 11 mph). Reserved (see reverseAccel). */
+  /** Top reverse speed (m/s ≈ 11 mph). */
   maxReverse: 5,
   /** Yaw rate at full steer and full steering authority (rad/s). */
   steerRate: 1.4,
@@ -73,10 +74,11 @@ export function spawnState(): CarState {
  * Advance the vehicle one step. Pure: returns a new state, never mutates input.
  *
  * Longitudinal rules:
- *  - Brake while rolling forward decelerates toward zero and clamps AT zero, so
- *    a single step can never flip forward speed straight into reverse.
- *  - Brake while stopped (or already reversing) engages reverse.
- *  - Gas accelerates forward (and, from reverse, smoothly back through zero).
+ *  - Brake bleeds speed toward zero from either direction and clamps AT zero,
+ *    so a single step can never flip speed straight through to the other sign.
+ *  - Gas in Drive accelerates forward; gas in Reverse accelerates backward.
+ *    A gear change never flips speed instantly — you must brake/coast through
+ *    zero before the accelerator pushes you the other way.
  *  - No pedal: passive drag bleeds speed toward zero.
  */
 export function stepCar(state: CarState, input: DriveInput, dt: number): CarState {
@@ -85,11 +87,23 @@ export function stepCar(state: CarState, input: DriveInput, dt: number): CarStat
   let speed = state.speed;
 
   if (brake > 0) {
-    // Brake bleeds speed toward a full stop and holds there — it never engages
-    // reverse, so the car won't roll backward when braking from a standstill.
-    speed = Math.max(0, speed - brake * DRIVING.brakeDecel * dt);
+    // Brake bleeds speed toward a full stop and holds there, from either
+    // direction — it never engages the opposite gear on its own.
+    const d = brake * DRIVING.brakeDecel * dt;
+    speed = Math.abs(speed) <= d ? 0 : speed - Math.sign(speed) * d;
   } else if (gas > 0) {
-    speed += gas * DRIVING.forwardAccel * dt;
+    // Accelerate in the current gear. Guard against the accelerator flipping
+    // sign in one step: while still rolling the wrong way for the gear, the
+    // pedal decelerates toward zero rather than instantly reversing.
+    if (input.reverse) {
+      speed = speed > 0
+        ? Math.max(0, speed - DRIVING.reverseAccel * gas * dt)
+        : speed - DRIVING.reverseAccel * gas * dt;
+    } else {
+      speed = speed < 0
+        ? Math.min(0, speed + DRIVING.forwardAccel * gas * dt)
+        : speed + DRIVING.forwardAccel * gas * dt;
+    }
   } else {
     const drag = DRIVING.drag * dt;
     speed = Math.abs(speed) <= drag ? 0 : speed - Math.sign(speed) * drag;

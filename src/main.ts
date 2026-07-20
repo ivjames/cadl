@@ -124,12 +124,14 @@ setupTouchControls(input, {
   onReset: resetVehicle,
   onSignalLeft: () => toggleSignal("left"),
   onSignalRight: () => toggleSignal("right"),
+  onGear: () => input.toggleReverse(),
 });
 setupSteeringWheel(input);
 
 // HUD element handles.
 const speedElement = document.querySelector<HTMLElement>("#speed");
 const gearElement = document.querySelector<HTMLElement>("#gear");
+const gearButton = document.querySelector<HTMLElement>("#gearButton");
 const limitElement = document.querySelector<HTMLElement>("#speedLimit");
 const zoneElement = document.querySelector<HTMLElement>("#zoneLabel");
 const stopCueElement = document.querySelector<HTMLElement>("#stopCue");
@@ -208,8 +210,12 @@ engine.runRenderLoop(() => {
     speedElement.textContent = `${Math.round(pose.speedMph)} mph`;
     speedElement.classList.toggle("over-limit", over);
   }
-  if (gearElement) {
-    gearElement.textContent = pose.speed > 0.1 ? "D" : pose.speed < -0.1 ? "R" : "N";
+  // Gear indicators reflect the SELECTED gear (D/R), like a real shifter — the
+  // HUD badge, the on-screen button label, and the button's active highlight.
+  if (gearElement) gearElement.textContent = drive.reverse ? "R" : "D";
+  if (gearButton) {
+    gearButton.textContent = drive.reverse ? "R" : "D";
+    gearButton.classList.toggle("reverse", drive.reverse);
   }
   if (limitElement) limitElement.textContent = String(limit.limitMph);
   if (zoneElement) zoneElement.textContent = limit.zone ?? "";

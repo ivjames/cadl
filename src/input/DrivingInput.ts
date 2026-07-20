@@ -29,6 +29,8 @@ export class DrivingInput {
   };
   /** Analog steering from the on-screen wheel, -1 (left) .. 1 (right). */
   private steerAxis = 0;
+  /** Transmission gear: false = Drive, true = Reverse. Toggled, not held. */
+  private reverse = false;
 
   /** Subscribe to keyboard + focus-loss events on the given window. */
   attach(target: Window): void {
@@ -45,6 +47,12 @@ export class DrivingInput {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
+    // Gear toggle (G) is edge-triggered: fire once per physical press, ignoring
+    // the OS key-repeat that would otherwise flip the gear every frame. (R is
+    // reserved for reset, so the gear lives on its own key.)
+    if (event.code === "KeyG" && !this.keys.has(event.code)) {
+      this.toggleReverse();
+    }
     this.keys.add(event.code);
   };
 
@@ -66,6 +74,22 @@ export class DrivingInput {
     this.steerAxis = Math.max(-1, Math.min(1, value));
   }
 
+  /** Select a transmission gear directly (false = Drive, true = Reverse). */
+  setReverse(on: boolean): void {
+    this.reverse = on;
+  }
+
+  /** Flip the gear between Drive and Reverse; returns the new state. */
+  toggleReverse(): boolean {
+    this.reverse = !this.reverse;
+    return this.reverse;
+  }
+
+  /** Whether the transmission is currently in Reverse. */
+  get inReverse(): boolean {
+    return this.reverse;
+  }
+
   private isHeld(control: HeldControl): boolean {
     if (this.touch[control]) return true;
     return KEY_MAP[control].some((code) => this.keys.has(code));
@@ -81,6 +105,7 @@ export class DrivingInput {
       brake: this.isHeld("brake") ? 1 : 0,
       // Combine keyboard/button steering with the analog wheel.
       steer: Math.max(-1, Math.min(1, digital + this.steerAxis)),
+      reverse: this.reverse,
     };
   }
 
@@ -89,5 +114,6 @@ export class DrivingInput {
     this.keys.clear();
     this.touch = { gas: false, brake: false, left: false, right: false };
     this.steerAxis = 0;
+    this.reverse = false;
   }
 }

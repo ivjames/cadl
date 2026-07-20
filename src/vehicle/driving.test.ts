@@ -9,7 +9,7 @@ import {
   stepCar,
 } from "./driving";
 
-const NEUTRAL: DriveInput = { gas: 0, brake: 0, steer: 0 };
+const NEUTRAL: DriveInput = { gas: 0, brake: 0, steer: 0, reverse: false };
 
 /** Run `stepCar` repeatedly with a fixed dt to simulate holding input. */
 function drive(start: CarState, input: DriveInput, steps: number, dt = 1 / 60): CarState {
@@ -65,6 +65,45 @@ describe("stepCar longitudinal behaviour", () => {
   it("clamps to the forward speed cap", () => {
     const flatOut = drive(spawnState(), { ...NEUTRAL, gas: 1 }, 2000);
     expect(flatOut.speed).toBeCloseTo(DRIVING.maxForward, 5);
+  });
+});
+
+describe("stepCar reverse gear", () => {
+  const REV: DriveInput = { ...NEUTRAL, reverse: true };
+
+  it("accelerates backward under gas in reverse", () => {
+    const next = stepCar(spawnState(), { ...REV, gas: 1 }, 0.1);
+    expect(next.speed).toBeCloseTo(-DRIVING.reverseAccel * 0.1, 5);
+    expect(next.speed).toBeLessThan(0);
+  });
+
+  it("clamps to the reverse speed cap", () => {
+    const flatOut = drive(spawnState(), { ...REV, gas: 1 }, 2000);
+    expect(flatOut.speed).toBeCloseTo(-DRIVING.maxReverse, 5);
+  });
+
+  it("brake bleeds reverse speed back toward zero without flipping to forward", () => {
+    const backing: CarState = { ...spawnState(), speed: -4 };
+    const next = stepCar(backing, { ...NEUTRAL, brake: 1 }, 10);
+    expect(next.speed).toBe(0);
+  });
+
+  it("gas in Drive while still rolling back settles at zero, never flips in one step", () => {
+    const backing: CarState = { ...spawnState(), speed: -4 };
+    const next = stepCar(backing, { ...NEUTRAL, gas: 1 }, 10);
+    expect(next.speed).toBe(0);
+  });
+
+  it("gas in Reverse while still rolling forward settles at zero, never flips in one step", () => {
+    const rolling: CarState = { ...spawnState(), speed: 4 };
+    const next = stepCar(rolling, { ...REV, gas: 1 }, 10);
+    expect(next.speed).toBe(0);
+  });
+
+  it("backs up in a straight line down -Z", () => {
+    const backed = drive(spawnState(), { ...REV, gas: 1 }, 60);
+    expect(backed.z).toBeLessThan(SPAWN.z);
+    expect(backed.x).toBeCloseTo(SPAWN.x, 5);
   });
 });
 

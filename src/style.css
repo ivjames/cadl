@@ -366,6 +366,22 @@ button {
   background: var(--accent-brake);
 }
 
+/* Gear selector: a slim tab beside the pedals; amber when in Reverse. */
+.drive-button.gear {
+  width: calc(var(--touch-size) * 0.62);
+  height: var(--touch-size);
+  border-radius: 0.8rem;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  align-self: stretch;
+  background: rgb(40 52 74 / 78%);
+}
+
+.drive-button.gear.reverse {
+  background: rgb(196 120 20 / 92%);
+  border-color: rgb(255 190 90 / 90%);
+}
+
 /* Draggable steering wheel (bottom-left) */
 .steer-wheel {
   width: max(104px, 22vmin);
