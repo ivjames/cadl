@@ -5,6 +5,21 @@ export default defineConfig({
   // resolve from "/" rather than the old GitHub Pages "/cadl/" project path.
   base: "/",
   build: {
-    sourcemap: true,
+    // Babylon dominates the bundle; emitting ~24 MB of sourcemaps for minified
+    // engine code isn't worth the build-time cost. Switch to "hidden" if error
+    // tracking ever needs maps without shipping the reference comment.
+    sourcemap: false,
+    // The Babylon vendor chunk is inherently large; don't warn on its size.
+    chunkSizeWarningLimit: 8000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Pin the engine to its own long-lived chunk: app-code edits then keep
+          // the same hash, so a returning iPad reuses the cached Babylon file
+          // instead of re-downloading ~1.5 MB (gzipped) every deploy.
+          babylon: ["@babylonjs/core"],
+        },
+      },
+    },
   },
 });
