@@ -7,8 +7,12 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
+    // Babylon.js ships WebGPU/WebXR .d.ts that clash with the DOM lib under
+    // strict mode; skip type-checking third-party declaration files (our own
+    // src is still fully checked).
+    "skipLibCheck": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src", "vite.config.ts"]
 }

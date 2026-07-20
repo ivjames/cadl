@@ -1,3 +1,15 @@
+:root {
+  --panel-bg: rgb(17 24 39 / 82%);
+  --panel-border: rgb(255 255 255 / 12%);
+  --accent-gas: rgb(34 160 84 / 88%);
+  --accent-brake: rgb(200 60 55 / 88%);
+  --touch-size: max(72px, 13vmin);
+}
+
+* {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #renderCanvas {
@@ -9,30 +21,144 @@ body,
 
 body {
   background: #111827;
-  color: white;
-  font-family: system-ui, sans-serif;
+  color: #fff;
+  font-family: system-ui, -apple-system, sans-serif;
+  /* Kill iOS text selection, tap highlight, and page scroll/zoom on the UI. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 #renderCanvas {
   display: block;
   touch-action: none;
+  outline: none;
 }
 
+/* --- Speed HUD (top-left) --- */
 #hud {
   position: fixed;
-  top: 1rem;
-  left: 1rem;
+  top: calc(env(safe-area-inset-top) + 0.9rem);
+  left: calc(env(safe-area-inset-left) + 0.9rem);
   display: flex;
-  gap: 1rem;
-  align-items: center;
-  padding: 0.75rem 1rem;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.6rem 0.95rem;
+  border: 1px solid var(--panel-border);
   border-radius: 0.75rem;
-  background: rgb(17 24 39 / 88%);
+  background: var(--panel-bg);
   box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 25%);
   pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+#hud strong {
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+  opacity: 0.8;
 }
 
 #speed {
-  min-width: 4.5rem;
+  min-width: 5rem;
+  font-size: 1.4rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* --- Control clusters --- */
+.control-cluster {
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  gap: 0.85rem;
+}
+
+#topControls {
+  top: calc(env(safe-area-inset-top) + 0.9rem);
+  right: calc(env(safe-area-inset-right) + 0.9rem);
+}
+
+#steeringControls {
+  left: calc(env(safe-area-inset-left) + 1rem);
+  bottom: calc(env(safe-area-inset-bottom) + 1rem);
+}
+
+#pedalControls {
+  right: calc(env(safe-area-inset-right) + 1rem);
+  bottom: calc(env(safe-area-inset-bottom) + 1rem);
+}
+
+/* --- Buttons --- */
+button {
+  font-family: inherit;
+  color: #fff;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 0.05s ease, filter 0.05s ease, background 0.05s ease;
+}
+
+#topControls button {
+  padding: 0.7rem 1.1rem;
+  min-height: 2.9rem;
+  border-radius: 0.7rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.drive-button {
+  width: var(--touch-size);
+  height: var(--touch-size);
+  border-radius: 1rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drive-button.pedal {
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+}
+
+.drive-button.gas {
+  background: var(--accent-gas);
+}
+
+.drive-button.brake {
+  background: var(--accent-brake);
+}
+
+/* Pressed feedback for both real pointer state and our JS-toggled class. */
+button:active,
+button.is-pressed {
+  transform: scale(0.94);
+  filter: brightness(1.25);
+}
+
+/* --- Landscape (primary iPad orientation): give pedals more reach --- */
+@media (orientation: landscape) {
+  :root {
+    --touch-size: max(76px, 12vmin);
+  }
+}
+
+/* --- Portrait: keep everything usable, tuck clusters in a bit --- */
+@media (orientation: portrait) {
+  :root {
+    --touch-size: max(72px, 18vw);
+  }
+
+  #steeringControls,
+  #pedalControls {
+    bottom: calc(env(safe-area-inset-bottom) + 1.5rem);
+  }
 }

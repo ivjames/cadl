@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# cadl — operate CLI for the CADL driver-training sim on the lab980 droplet.
+#
+# CADL is a static Vite build. On the droplet it lives at /var/www/cadl, is
+# built to dist/, and is served by pm2 (`pm2 serve`) on a local port that nginx
+# proxies to. This script wraps the day-to-day actions; it does NOT provision
+# DNS/nginx/TLS — that is `provision-site cadl ivjames/cadl` (see DEPLOY.md).
+#
+# Install once on the droplet:
+#   ln -sf /var/www/cadl/bin/cadl /usr/local/bin/cadl
+set -euo pipefail
+
+APP="cadl"
+DIR="/var/www/$APP"
+BRANCH="${CADL_BRANCH:-main}"
+
+c_blue=$'\033[1;34m'; c_off=$'\033[0m'
+log() { printf '%s==>%s %s\n' "$c_blue" "$c_off" "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+port() {
+  # Read the pm2-reserved local port from the app's .env (seeded by provision-site).
+  grep -E '^[[:space:]]*(export[[:space:]]+)?PORT=' "$DIR/.env" 2>/dev/null \
+    | head -1 | sed 's/.*PORT=//' | tr -d '"'\'' \t\r'
+}
+
+deploy() {
+  cd "$DIR"
+  log "fetching origin/$BRANCH"
+  git fetch --quiet origin "$BRANCH"
+  git reset --hard "origin/$BRANCH"
+  log "installing dependencies"
+  npm ci
+  log "building dist/"
+  npm run build
+  restart
+  log "deployed $(git rev-parse --short HEAD)"
+}
+
+restart() {
+  local p; p="$(port)"
+  [ -n "$p" ] || die "no PORT in $DIR/.env (run provision-site first)."
+  if pm2 describe "$APP" >/dev/null 2>&1; then
+    log "restarting pm2 app '$APP'"
+    pm2 restart "$APP" --update-env
+  else
+    log "starting pm2 app '$APP' (static serve of dist/ on :$p)"
+    # --spa so client-side routes fall back to index.html.
+    PORT="$p" pm2 serve "$DIR/dist" "$p" --name "$APP" --spa
+  fi
+  pm2 save
+}
+
+logs()   { pm2 logs "$APP" "$@"; }
+status() { pm2 describe "$APP"; }
+
+case "${1:-}" in
+  deploy)  deploy ;;
+  restart) restart ;;
+  logs)    shift; logs "$@" ;;
+  status)  status ;;
+  *) cat <<USAGE
+cadl — operate the CADL sim on the lab980 droplet.
+
+Usage: cadl <command>
+  deploy    git pull origin/$BRANCH -> npm ci -> build -> pm2 restart -> pm2 save
+  restart   rebuild-free restart (or first-time pm2 serve of dist/)
+  logs      tail pm2 logs for '$APP'
+  status    pm2 describe '$APP'
+USAGE
+    [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] || [ -z "${1:-}" ] || die "unknown command: $1"
+    ;;
+esac
