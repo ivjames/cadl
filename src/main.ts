@@ -23,6 +23,7 @@ import {
   setSignal,
   updateSignal,
 } from "./vehicle/signals";
+import { WORLD } from "./rules/roadGrid";
 import { isOverLimit, speedLimitAt } from "./rules/speedZones";
 import { stopSignAhead } from "./rules/stopControls";
 import { LESSONS } from "./lessons/lessons";
@@ -168,6 +169,14 @@ engine.runRenderLoop(() => {
 
   vehicle.update(drive, dt, trafficRects);
   const pose = vehicle.pose;
+
+  // If the car wrapped across the world edge, jump the chase camera with it so
+  // it doesn't fly across the whole map trying to catch up. (The overview cam
+  // recomputes from its target each frame, so it needs no help.)
+  const wrapDx = pose.x - before.x;
+  const wrapDz = pose.z - before.z;
+  if (Math.abs(wrapDx) > WORLD / 2) followCamera.position.x += wrapDx;
+  if (Math.abs(wrapDz) > WORLD / 2) followCamera.position.z += wrapDz;
 
   // Turn signals: advance the state machine, then run the blink timer.
   signal = updateSignal(signal, pose.heading - headingBefore, drive.steer);
