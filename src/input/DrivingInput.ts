@@ -45,8 +45,12 @@ export class DrivingInput {
   private steerAxis = 0;
   /** Transmission gear: false = Drive, true = Reverse. Toggled, not held. */
   private reverse = false;
-  /** Analog pedal positions, 0..1, eased toward their held target each frame so
-   *  the throttle and brake apply progressively rather than snapping on/off. */
+  /** Analog pedal *demand* from the on-screen touch pedals, 0..1 — how far the
+   *  finger has pressed the gas / brake. Keyboard keys demand a full 1. */
+  private throttleAxis = 0;
+  private brakeAxis = 0;
+  /** Eased pedal positions, 0..1, that follow the demand each frame so the
+   *  throttle and brake apply progressively rather than snapping on/off. */
   private gasValue = 0;
   private brakeValue = 0;
 
@@ -92,6 +96,16 @@ export class DrivingInput {
     this.steerAxis = Math.max(-1, Math.min(1, value));
   }
 
+  /** Set the analog throttle demand from the gas pedal (clamped to 0..1). */
+  setThrottle(value: number): void {
+    this.throttleAxis = Math.max(0, Math.min(1, value));
+  }
+
+  /** Set the analog brake demand from the brake pedal (clamped to 0..1). */
+  setBrake(value: number): void {
+    this.brakeAxis = Math.max(0, Math.min(1, value));
+  }
+
   /** Select a transmission gear directly (false = Drive, true = Reverse). */
   setReverse(on: boolean): void {
     this.reverse = on;
@@ -114,12 +128,27 @@ export class DrivingInput {
   }
 
   /**
-   * Advance the analog pedals toward their held targets. Call once per frame
-   * (before {@link read}) so gas and brake ramp in and out instead of snapping.
+   * Advance the analog pedals toward their demand. Call once per frame (before
+   * {@link read}). The demand is the greater of the keyboard key (full 1 when
+   * held) and the touch pedal's analog position, so a light press on the pedal
+   * gives light throttle/brake while a key still gives full. Easing toward the
+   * demand keeps the response progressive rather than snapping.
    */
   update(dt: number): void {
-    this.gasValue = ease(this.gasValue, this.isHeld("gas") ? 1 : 0, this.isHeld("gas") ? PEDAL.gasRise : PEDAL.gasFall, dt);
-    this.brakeValue = ease(this.brakeValue, this.isHeld("brake") ? 1 : 0, this.isHeld("brake") ? PEDAL.brakeRise : PEDAL.brakeFall, dt);
+    const gasTarget = Math.max(this.isHeld("gas") ? 1 : 0, this.throttleAxis);
+    const brakeTarget = Math.max(this.isHeld("brake") ? 1 : 0, this.brakeAxis);
+    this.gasValue = ease(
+      this.gasValue,
+      gasTarget,
+      gasTarget > this.gasValue ? PEDAL.gasRise : PEDAL.gasFall,
+      dt,
+    );
+    this.brakeValue = ease(
+      this.brakeValue,
+      brakeTarget,
+      brakeTarget > this.brakeValue ? PEDAL.brakeRise : PEDAL.brakeFall,
+      dt,
+    );
   }
 
   /** Snapshot the combined driver intent for this frame. */
@@ -142,6 +171,8 @@ export class DrivingInput {
     this.touch = { gas: false, brake: false, left: false, right: false };
     this.steerAxis = 0;
     this.reverse = false;
+    this.throttleAxis = 0;
+    this.brakeAxis = 0;
     this.gasValue = 0;
     this.brakeValue = 0;
   }

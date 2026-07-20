@@ -1,4 +1,4 @@
-import type { DrivingInput, HeldControl } from "../input/DrivingInput";
+import type { DrivingInput } from "../input/DrivingInput";
 
 export interface TouchControlsOptions {
   onToggleCamera: () => void;
@@ -8,33 +8,47 @@ export interface TouchControlsOptions {
   onGear: () => void;
 }
 
-/** Wire a hold-to-activate button (steer/gas/brake) to a driving control. */
-function bindHold(id: string, input: DrivingInput, control: HeldControl): void {
+/**
+ * Wire an analog pedal: the throttle/brake demand is how far down the button
+ * the finger presses (top edge ≈ 0, bottom edge = 1). Dragging up/down while
+ * held feathers it, and a fill level (`--pedal`) shows how much is applied.
+ */
+function bindPedal(id: string, set: (value: number) => void): void {
   const el = document.getElementById(id);
   if (!el) return;
 
+  const level = (event: PointerEvent): number => {
+    const r = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (event.clientY - r.top) / r.height));
+  };
+  const apply = (value: number): void => {
+    set(value);
+    el.style.setProperty("--pedal", String(value));
+  };
+
   const press = (event: PointerEvent): void => {
     event.preventDefault();
-    // Capture the pointer so we still get pointerup even if the finger slides
-    // off the button — this is what prevents "stuck" controls.
     try {
       el.setPointerCapture(event.pointerId);
     } catch {
-      /* not all pointers are capturable; the release listeners still cover us */
+      /* release listeners still cover us */
     }
     el.classList.add("is-pressed");
-    input.press(control, true);
+    apply(level(event));
   };
-
+  const move = (event: PointerEvent): void => {
+    if (!el.classList.contains("is-pressed")) return;
+    apply(level(event));
+  };
   const release = (): void => {
     el.classList.remove("is-pressed");
-    input.press(control, false);
+    apply(0);
   };
 
   el.addEventListener("pointerdown", press);
+  el.addEventListener("pointermove", move);
   el.addEventListener("pointerup", release);
   el.addEventListener("pointercancel", release);
-  el.addEventListener("pointerleave", release);
   el.addEventListener("lostpointercapture", release);
   el.addEventListener("contextmenu", (event) => event.preventDefault());
 }
@@ -63,8 +77,9 @@ function bindTap(id: string, handler: () => void): void {
  */
 export function setupTouchControls(input: DrivingInput, options: TouchControlsOptions): void {
   // Steering is the on-screen wheel (see SteeringWheel.ts) + keyboard.
-  bindHold("gasButton", input, "gas");
-  bindHold("brakeButton", input, "brake");
+  // Gas and brake are analog pedals — the demand tracks how far they're pressed.
+  bindPedal("gasButton", (v) => input.setThrottle(v));
+  bindPedal("brakeButton", (v) => input.setBrake(v));
   bindTap("cameraButton", options.onToggleCamera);
   bindTap("resetButton", options.onReset);
   bindTap("signalLeft", options.onSignalLeft);
