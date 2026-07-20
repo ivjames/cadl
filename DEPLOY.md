@@ -8,7 +8,7 @@ certbot cert. See `lab980.com/CLAUDE.md` for the platform conventions.
 
 - Web dir on the droplet: `/var/www/cadl`
 - Build output: `dist/` (served, not committed)
-- Process: pm2 app `cadl` (`pm2 serve dist <port> --spa`)
+- Process: pm2 app `cadl` (`pm2 start server.mjs`, port from `.env`)
 - Subdomain: `cadl.lab980.com`
 
 ## First-time provisioning (once, on the droplet)
@@ -25,12 +25,12 @@ cd /var/www/cadl
 ln -sf /var/www/cadl/bin/cadl /usr/local/bin/cadl   # install the operate CLI
 npm ci
 npm run build
-pm2 startOrReload ecosystem.config.cjs              # or just: cadl restart
+cadl restart                                        # pm2 start server.mjs --name cadl
 pm2 save
 ```
 
-The app is a tiny dependency-free static server (`server.mjs`) run under pm2 via
-`ecosystem.config.cjs`. It reads its port from `/var/www/cadl/.env` — the same
+The app is a tiny dependency-free static server (`server.mjs`) run under pm2
+(`pm2 start server.mjs --name cadl`). It reads its port from `/var/www/cadl/.env` — the same
 `PORT` `provision-site` reserved (8060+) and pointed the nginx vhost at — so the
 app and nginx can't disagree on the port. Reboot survival relies on the pm2
 startup hook already installed on the droplet (`systemctl is-enabled pm2-root` →
@@ -45,7 +45,8 @@ cadl deploy
 ```
 
 That runs: `git fetch` + `reset --hard origin/main` → `npm ci` → `npm run
-build` → `pm2 startOrReload` → `pm2 save`. Other operate commands:
+build` → `pm2 restart` (or first-run `pm2 start server.mjs`) → `pm2 save`.
+Other operate commands:
 
 ```bash
 cadl restart   # start/reload the pm2 app without rebuilding

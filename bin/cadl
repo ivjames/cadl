@@ -53,11 +53,17 @@ restart() {
   local p; p="$(port)"
   [ -n "$p" ] || die "no PORT in $DIR/.env (run provision-site first)."
   [ -d "$DIR/dist" ] || die "no dist/ to serve — run 'cadl deploy' (or npm run build) first."
-  # startOrReload brings the app up if it's down and reloads it in place if it's
-  # already running. The port comes from .env via server.mjs, so it can't drift
-  # out of sync with the nginx proxy_pass the way `pm2 serve` args could.
-  log "starting/reloading pm2 app '$APP' (static serve of dist/ on :$p)"
-  pm2 startOrReload "$DIR/ecosystem.config.cjs"
+  # Start the ESM server directly. pm2 doesn't reliably treat a .cjs ecosystem
+  # file as a *config* (older versions run it as a script and never launch the
+  # app -> 502), so we hand pm2 the actual script. server.mjs reads its port
+  # from .env, so it stays in sync with the nginx proxy_pass on its own.
+  if pm2 describe "$APP" >/dev/null 2>&1; then
+    log "restarting pm2 app '$APP' (server.mjs on :$p)"
+    pm2 restart "$APP"
+  else
+    log "starting pm2 app '$APP' (server.mjs on :$p)"
+    pm2 start "$DIR/server.mjs" --name "$APP"
+  fi
   pm2 save
 }
 
