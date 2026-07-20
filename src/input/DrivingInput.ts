@@ -27,6 +27,8 @@ export class DrivingInput {
     left: false,
     right: false,
   };
+  /** Analog steering from the on-screen wheel, -1 (left) .. 1 (right). */
+  private steerAxis = 0;
 
   /** Subscribe to keyboard + focus-loss events on the given window. */
   attach(target: Window): void {
@@ -59,6 +61,11 @@ export class DrivingInput {
     this.touch[control] = active;
   }
 
+  /** Set the analog steering axis from the wheel (clamped to -1..1). */
+  setSteerAxis(value: number): void {
+    this.steerAxis = Math.max(-1, Math.min(1, value));
+  }
+
   private isHeld(control: HeldControl): boolean {
     if (this.touch[control]) return true;
     return KEY_MAP[control].some((code) => this.keys.has(code));
@@ -68,10 +75,12 @@ export class DrivingInput {
   read(): DriveInput {
     const left = this.isHeld("left");
     const right = this.isHeld("right");
+    const digital = (right ? 1 : 0) - (left ? 1 : 0);
     return {
       gas: this.isHeld("gas") ? 1 : 0,
       brake: this.isHeld("brake") ? 1 : 0,
-      steer: (right ? 1 : 0) - (left ? 1 : 0),
+      // Combine keyboard/button steering with the analog wheel.
+      steer: Math.max(-1, Math.min(1, digital + this.steerAxis)),
     };
   }
 
@@ -79,5 +88,6 @@ export class DrivingInput {
   clear(): void {
     this.keys.clear();
     this.touch = { gas: false, brake: false, left: false, right: false };
+    this.steerAxis = 0;
   }
 }

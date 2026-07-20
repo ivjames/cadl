@@ -61,8 +61,7 @@ function bindTap(id: string, handler: () => void): void {
  * pen, and mouse. Also suppresses Safari pinch-zoom gesture events globally.
  */
 export function setupTouchControls(input: DrivingInput, options: TouchControlsOptions): void {
-  bindHold("steerLeft", input, "left");
-  bindHold("steerRight", input, "right");
+  // Steering is the on-screen wheel (see SteeringWheel.ts) + keyboard.
   bindHold("gasButton", input, "gas");
   bindHold("brakeButton", input, "brake");
   bindTap("cameraButton", options.onToggleCamera);

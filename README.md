@@ -37,10 +37,11 @@ Desktop keyboard:
 - `R`: reset / restart the current lesson
 - `L`: next lesson
 
-Touch (iPad Safari, landscape-first): on-screen steering (bottom-left), gas +
-brake (bottom-right), turn signals (bottom-centre), and camera/reset (top-right).
+Touch (iPad Safari, landscape-first): a draggable **steering wheel** (bottom-left,
+grab and rotate for analog steering, springs back on release), gas + brake
+(bottom-right), turn signals (bottom-centre), and camera/reset (top-right).
 Steering and a pedal can be held together; controls release cleanly when a
-finger lifts or slides off.
+finger lifts or slides off. The car collides with buildings and the world edge.
 
 The HUD shows speed, gear (D/N/R), the posted speed limit (turns red over the
 limit), the current zone (e.g. School Zone), a blinking turn-signal indicator,
@@ -56,13 +57,15 @@ src/
   vehicle/signals.ts          pure turn-signal state machine w/ auto-cancel
   vehicle/TrainingVehicle.ts  procedural car meshes (incl. blinkers) driven by the model
   rules/roadGrid.ts           pure city-grid layout (roads, intersections, approaches)
+  rules/obstacles.ts          pure building collision (axis-separated wall slide)
   rules/speedZones.ts         pure speed-limit zones + lookup
   rules/stopControls.ts       stop-control detection, generated from the road grid
   lessons/scoring.ts          pure driving coach: grades violations + achievements
   lessons/lessons.ts          data-driven California lesson definitions
   lessons/LessonRunner.ts     runs a lesson over the coach; tracks objectives + pass/fail
   scene/createEnvironment.ts  roads, markings, curbs, sidewalks, scenery, traffic signs
-  ui/TouchControls.ts         pointer-event wiring for the on-screen controls
+  ui/TouchControls.ts         pointer-event wiring for the pedals + buttons
+  ui/SteeringWheel.ts         draggable analog steering wheel
   style.css                   mobile-first control layout + HUD
 ```
 

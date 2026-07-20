@@ -52,9 +52,16 @@
       <button id="signalRight" class="signal-button" type="button" aria-label="Signal right">➡</button>
     </div>
 
-    <div id="steeringControls" class="control-cluster driving-controls" aria-label="Steering controls">
-      <button id="steerLeft" class="drive-button steering" type="button" aria-label="Steer left">◀</button>
-      <button id="steerRight" class="drive-button steering" type="button" aria-label="Steer right">▶</button>
+    <div id="steeringControls" class="control-cluster" aria-label="Steering">
+      <div id="steerWheel" class="steer-wheel" role="slider" aria-label="Steering wheel" tabindex="0">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="46" class="wheel-rim" />
+          <circle cx="50" cy="50" r="15" class="wheel-hub" />
+          <line x1="50" y1="50" x2="8" y2="50" class="wheel-spoke" />
+          <line x1="50" y1="50" x2="92" y2="50" class="wheel-spoke" />
+          <line x1="50" y1="50" x2="50" y2="92" class="wheel-spoke" />
+        </svg>
+      </div>
     </div>
 
     <div id="pedalControls" class="control-cluster driving-controls" aria-label="Pedal controls">

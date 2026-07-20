@@ -28,11 +28,27 @@ describe("DrivingInput", () => {
     expect(input.read().steer).toBe(0);
   });
 
-  it("clear() drops all active touch state", () => {
+  it("uses the analog steering axis from the wheel", () => {
+    const input = new DrivingInput();
+    input.setSteerAxis(0.5);
+    expect(input.read().steer).toBeCloseTo(0.5, 5);
+    input.setSteerAxis(-2); // clamps to -1
+    expect(input.read().steer).toBe(-1);
+  });
+
+  it("combines wheel and button steering, clamped", () => {
+    const input = new DrivingInput();
+    input.press("right", true);
+    input.setSteerAxis(0.5);
+    expect(input.read().steer).toBe(1); // 1 + 0.5 clamped
+  });
+
+  it("clear() drops all active touch and analog state", () => {
     const input = new DrivingInput();
     input.press("gas", true);
     input.press("brake", true);
     input.press("left", true);
+    input.setSteerAxis(0.8);
     input.clear();
     expect(input.read()).toEqual({ gas: 0, brake: 0, steer: 0 });
   });
