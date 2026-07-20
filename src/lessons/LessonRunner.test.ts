@@ -15,6 +15,7 @@ const base: DrivingSample = {
   crossTrafficAhead: false,
   pedestrianAhead: false,
   parked: false,
+  offRoad: false,
 };
 
 const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;

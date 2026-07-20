@@ -20,6 +20,7 @@ const base: DrivingSample = {
   crossTrafficAhead: false,
   pedestrianAhead: false,
   parked: false,
+  offRoad: false,
 };
 
 function feed(coach: DrivingCoach, sample: Partial<DrivingSample>, frames: number, dt = 1 / 60): void {
@@ -145,6 +146,34 @@ describe("DrivingCoach — parking", () => {
     feed(coach, { parked: false }, 10);
     feed(coach, { parked: true }, 60); // back in again
     expect(coach.achievements.filter((a) => a.kind === "parked").length).toBe(1);
+  });
+});
+
+describe("DrivingCoach — off road", () => {
+  it("faults driving off the road once sustained", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { offRoad: true, speedMph: 15 }, 60);
+    expect(coach.violations.some((v) => v.kind === "offRoad")).toBe(true);
+  });
+
+  it("does not fault a momentary clip", () => {
+    const coach = new DrivingCoach();
+    coach.observe({ ...base, offRoad: true, speedMph: 15 }, 0.2);
+    expect(coach.violations.some((v) => v.kind === "offRoad")).toBe(false);
+  });
+
+  it("does not fault a stopped car off the pavement", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { offRoad: true, speedMph: 0 }, 60);
+    expect(coach.violations.some((v) => v.kind === "offRoad")).toBe(false);
+  });
+
+  it("re-faults only after returning to the road", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { offRoad: true, speedMph: 15 }, 120);
+    feed(coach, { offRoad: false, speedMph: 15 }, 10);
+    feed(coach, { offRoad: true, speedMph: 15 }, 60);
+    expect(coach.violations.filter((v) => v.kind === "offRoad").length).toBe(2);
   });
 });
 

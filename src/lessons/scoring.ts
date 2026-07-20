@@ -35,6 +35,8 @@ export interface DrivingSample {
   pedestrianAhead: boolean;
   /** Whether the car is parked in the active lesson's bay (position + rest). */
   parked: boolean;
+  /** Whether the car is off the paved roadway (on grass/sidewalk). */
+  offRoad: boolean;
 }
 
 export type ViolationKind =
@@ -44,7 +46,8 @@ export type ViolationKind =
   | "follow"
   | "yield"
   | "block"
-  | "pedestrian";
+  | "pedestrian"
+  | "offRoad";
 /** Positive things a lesson can require the driver to do. */
 export type AchievementKind =
   | "cleanStop"
@@ -77,6 +80,7 @@ export const PENALTIES: Record<ViolationKind, number> = {
   yield: 15,
   block: 10,
   pedestrian: 20,
+  offRoad: 12,
 };
 
 /** Speed (mph) below which the car counts as fully stopped. */
@@ -110,6 +114,8 @@ export const CROSS_YIELD_S = 0.4;
 export const PEDESTRIAN_MIN_MPH = 6;
 /** Sustained seconds bearing down on a pedestrian before it registers. */
 export const PEDESTRIAN_GRACE_S = 0.4;
+/** Sustained seconds off the roadway before it registers (brief clips are free). */
+export const OFFROAD_GRACE_S = 0.5;
 /** Speed below which slowing for a pedestrian ahead counts as yielding (mph). */
 export const PEDESTRIAN_YIELD_MPH = 2.5;
 /** Sustained seconds crawling for a pedestrian ahead before a yield is credited. */
@@ -152,6 +158,9 @@ export class DrivingCoach {
   // Pedestrian hysteresis.
   private pedTime = 0;
   private pedActive = false;
+  // Off-road hysteresis.
+  private offRoadTime = 0;
+  private offRoadActive = false;
   // Positive: sustained time crawling for a pedestrian ahead, and a one-shot latch.
   private pedYieldTime = 0;
   private pedYieldAwarded = false;
@@ -211,6 +220,8 @@ export class DrivingCoach {
     this.crossYieldAwarded = false;
     this.pedTime = 0;
     this.pedActive = false;
+    this.offRoadTime = 0;
+    this.offRoadActive = false;
     this.pedYieldTime = 0;
     this.pedYieldAwarded = false;
     this.parkTime = 0;
@@ -236,6 +247,7 @@ export class DrivingCoach {
 
     return (
       this.checkPedestrian(sample, dt) ??
+      this.checkOffRoad(sample, dt) ??
       this.checkSpeeding(sample, dt) ??
       this.checkFollowing(sample, dt) ??
       this.checkIntersection(sample, dt) ??
@@ -287,6 +299,21 @@ export class DrivingCoach {
       this.pedTime = 0;
       this.pedActive = false;
       this.pedYieldTime = 0;
+    }
+    return null;
+  }
+
+  private checkOffRoad(sample: DrivingSample, dt: number): CoachEvent | null {
+    // Only fault a moving car — creeping off at a standstill isn't graded.
+    if (sample.offRoad && sample.speedMph > 1.5) {
+      this.offRoadTime += dt;
+      if (!this.offRoadActive && this.offRoadTime >= OFFROAD_GRACE_S) {
+        this.offRoadActive = true;
+        return this.emit("offRoad", "Keep it on the road");
+      }
+    } else {
+      this.offRoadTime = 0;
+      this.offRoadActive = false;
     }
     return null;
   }
