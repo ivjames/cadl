@@ -27,7 +27,7 @@ import {
   setSignal,
   updateSignal,
 } from "./vehicle/signals";
-import { WORLD } from "./rules/roadGrid";
+import { WORLD, onRoad } from "./rules/roadGrid";
 import { isOverLimit, speedLimitAt } from "./rules/speedZones";
 import { stopSignAhead } from "./rules/stopControls";
 import { crossTrafficInJunction, intersectionAt, junctionAhead } from "./rules/intersections";
@@ -257,6 +257,7 @@ engine.runRenderLoop(() => {
   const pedestrianAhead = pedestrianHazard(pose.x, pose.z, pose.heading, pedestrians);
   const bay = LESSONS[lessonIndex]?.bay;
   const parked = bay ? isParked(bay, pose.x, pose.z, pose.heading, pose.speedMph) : false;
+  const offRoad = !onRoad(pose.x, pose.z);
   const event = runner.observe(
     {
       heading: pose.heading,
@@ -270,6 +271,7 @@ engine.runRenderLoop(() => {
       crossTrafficAhead,
       pedestrianAhead,
       parked,
+      offRoad,
     },
     dt,
   );

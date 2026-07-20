@@ -40,6 +40,15 @@ export function wrapWorld(v: number): number {
   return v;
 }
 
+/**
+ * Whether a point lies on the paved roadway — within a half-width of any road
+ * centreline on either axis (the union of all N/S and E/W strips). Points off
+ * every strip are on the grass/sidewalk.
+ */
+export function onRoad(x: number, z: number): boolean {
+  return ROADS.some((c) => Math.abs(x - c) <= ROAD_HALF || Math.abs(z - c) <= ROAD_HALF);
+}
+
 export function intersections(): Intersection[] {
   const out: Intersection[] = [];
   for (const cx of ROADS) for (const cz of ROADS) out.push({ cx, cz });
