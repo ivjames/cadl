@@ -1,13 +1,13 @@
-import {
-  ArcRotateCamera,
-  Color4,
-  DirectionalLight,
-  Engine,
-  FollowCamera,
-  HemisphericLight,
-  Scene,
-  Vector3,
-} from "@babylonjs/core";
+// Deep imports (not the "@babylonjs/core" barrel) so Rollup only bundles the
+// engine pieces we actually use — smaller output and a faster build.
+import { Engine } from "@babylonjs/core/Engines/engine";
+import { Scene } from "@babylonjs/core/scene";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { FollowCamera } from "@babylonjs/core/Cameras/followCamera";
+import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import "./style.css";
 import { DrivingInput } from "./input/DrivingInput";
 import { createEnvironment } from "./scene/createEnvironment";

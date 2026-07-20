@@ -1,11 +1,11 @@
-import {
-  Color3,
-  Mesh,
-  MeshBuilder,
-  Scene,
-  StandardMaterial,
-  Vector3,
-} from "@babylonjs/core";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Scene } from "@babylonjs/core/scene";
 
 /** Half-width of each road (roads are 11 m wide, spanning -5.5..5.5). */
 const ROAD_HALF = 5.5;
@@ -25,7 +25,7 @@ function slab(
   position: Vector3,
   material: StandardMaterial,
 ): Mesh {
-  const box = MeshBuilder.CreateBox(name, size, scene);
+  const box = CreateBox(name, size, scene);
   box.position = position;
   box.material = material;
   box.freezeWorldMatrix(); // static scenery: skip per-frame matrix recompute
@@ -46,7 +46,7 @@ export function createEnvironment(scene: Scene): void {
   const curbMat = flatMaterial(scene, "curbMat", new Color3(0.75, 0.75, 0.78));
   const walkMat = flatMaterial(scene, "sidewalkMat", new Color3(0.62, 0.62, 0.64));
 
-  const ground = MeshBuilder.CreateGround("ground", { width: WORLD, height: WORLD }, scene);
+  const ground = CreateGround("ground", { width: WORLD, height: WORLD }, scene);
   ground.material = grassMat;
   ground.freezeWorldMatrix();
 
@@ -95,11 +95,11 @@ export function createEnvironment(scene: Scene): void {
     [-12, 12], [-22, 24], [-14, 30], [-12, -12], [-26, -14], [-14, -28],
   ];
   for (const [tx, tz] of treeSpots) {
-    const trunk = MeshBuilder.CreateCylinder(`trunk-${tx}-${tz}`, { diameter: 0.4, height: 1.6, tessellation: 8 }, scene);
+    const trunk = CreateCylinder(`trunk-${tx}-${tz}`, { diameter: 0.4, height: 1.6, tessellation: 8 }, scene);
     trunk.material = trunkMat;
     trunk.position.set(tx, 0.8, tz);
     trunk.freezeWorldMatrix();
-    const canopy = MeshBuilder.CreateCylinder(`canopy-${tx}-${tz}`, { diameterTop: 0, diameterBottom: 2.6, height: 3, tessellation: 10 }, scene);
+    const canopy = CreateCylinder(`canopy-${tx}-${tz}`, { diameterTop: 0, diameterBottom: 2.6, height: 3, tessellation: 10 }, scene);
     canopy.material = leafMat;
     canopy.position.set(tx, 3.0, tz);
     canopy.freezeWorldMatrix();
