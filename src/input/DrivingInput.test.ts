@@ -45,6 +45,48 @@ describe("DrivingInput", () => {
     expect(g).toBeGreaterThan(0); // still easing down, not instantly zero
   });
 
+  it("holds a partial throttle from the analog pedal (proportional, not full)", () => {
+    const input = new DrivingInput();
+    input.setThrottle(0.4);
+    for (let i = 0; i < 120; i += 1) input.update(1 / 60); // settle
+    expect(input.read().gas).toBeCloseTo(0.4, 5); // stays at the demand, never ramps to 1
+  });
+
+  it("holds a partial brake from the analog pedal", () => {
+    const input = new DrivingInput();
+    input.setBrake(0.3);
+    for (let i = 0; i < 120; i += 1) input.update(1 / 60);
+    expect(input.read().brake).toBeCloseTo(0.3, 5);
+  });
+
+  it("follows the pedal down when the demand drops", () => {
+    const input = new DrivingInput();
+    input.setThrottle(0.8);
+    input.update(1);
+    input.setThrottle(0.2);
+    for (let i = 0; i < 120; i += 1) input.update(1 / 60);
+    expect(input.read().gas).toBeCloseTo(0.2, 5);
+  });
+
+  it("a keyboard key still demands full throttle over a light pedal", () => {
+    const input = new DrivingInput();
+    input.setThrottle(0.3);
+    input.press("gas", true); // e.g. keyboard-equivalent held control
+    for (let i = 0; i < 120; i += 1) input.update(1 / 60);
+    expect(input.read().gas).toBeCloseTo(1, 5);
+  });
+
+  it("clear() releases the analog pedals", () => {
+    const input = new DrivingInput();
+    input.setThrottle(0.5);
+    input.setBrake(0.5);
+    input.update(1);
+    input.clear();
+    input.update(1);
+    expect(input.read().gas).toBe(0);
+    expect(input.read().brake).toBe(0);
+  });
+
   it("cancels opposing steer inputs to zero", () => {
     const input = new DrivingInput();
     input.press("left", true);

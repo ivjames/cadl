@@ -353,17 +353,34 @@ button {
   justify-content: center;
 }
 
+/* Analog pedals: a translucent fill rises from the bottom to show how far the
+   pedal is pressed (`--pedal`, 0..1, set from the touch drag position). Press
+   lower on the pedal for more throttle/brake; drag up/down to feather. */
 .drive-button.pedal {
+  --pedal: 0;
   font-size: 1rem;
   letter-spacing: 0.06em;
+  touch-action: none;
 }
 
 .drive-button.gas {
-  background: var(--accent-gas);
+  background:
+    linear-gradient(
+      to top,
+      rgb(255 255 255 / 32%) calc(var(--pedal) * 100%),
+      rgb(255 255 255 / 0%) calc(var(--pedal) * 100%)
+    ),
+    var(--accent-gas);
 }
 
 .drive-button.brake {
-  background: var(--accent-brake);
+  background:
+    linear-gradient(
+      to top,
+      rgb(255 255 255 / 32%) calc(var(--pedal) * 100%),
+      rgb(255 255 255 / 0%) calc(var(--pedal) * 100%)
+    ),
+    var(--accent-brake);
 }
 
 /* Gear selector: a slim tab beside the pedals; amber when in Reverse. */
