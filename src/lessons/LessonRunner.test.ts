@@ -12,6 +12,7 @@ const base: DrivingSample = {
   leadGap: null,
   junction: null,
   crossTraffic: false,
+  pedestrianAhead: false,
 };
 
 const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;

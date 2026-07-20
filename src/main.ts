@@ -13,6 +13,8 @@ import { DrivingInput } from "./input/DrivingInput";
 import { createEnvironment } from "./scene/createEnvironment";
 import { TrafficView } from "./scene/TrafficView";
 import { createTraffic, leadGapFor, stepTraffic } from "./traffic/traffic";
+import { PedestrianView } from "./scene/PedestrianView";
+import { createPedestrians, pedestrianHazard, stepPedestrians } from "./pedestrians/pedestrians";
 import { setupTouchControls } from "./ui/TouchControls";
 import { setupSteeringWheel } from "./ui/SteeringWheel";
 import { TrainingVehicle } from "./vehicle/TrainingVehicle";
@@ -46,6 +48,10 @@ const vehicle = new TrainingVehicle(scene);
 let traffic = createTraffic();
 const trafficView = new TrafficView(scene, traffic.length);
 trafficView.sync(traffic);
+
+let pedestrians = createPedestrians();
+const pedestrianView = new PedestrianView(scene, pedestrians.length);
+pedestrianView.sync(pedestrians);
 
 // --- Cameras: chase (follow) and overview, both tracking the vehicle root ---
 const followCamera = new FollowCamera("followCamera", new Vector3(0, 5, -10), scene);
@@ -90,6 +96,8 @@ function resetVehicle(): void {
   runner.reset();
   traffic = createTraffic();
   trafficView.sync(traffic);
+  pedestrians = createPedestrians();
+  pedestrianView.sync(pedestrians);
 }
 
 function loadLesson(index: number): void {
@@ -166,6 +174,8 @@ engine.runRenderLoop(() => {
   const before = vehicle.pose;
   traffic = stepTraffic(traffic, dt, { x: before.x, z: before.z, heading: before.heading });
   trafficView.sync(traffic);
+  pedestrians = stepPedestrians(pedestrians, dt);
+  pedestrianView.sync(pedestrians);
   const trafficRects = traffic.map((c) => ({ cx: c.x, cz: c.z, halfW: 1.3, halfD: 2.6 }));
 
   vehicle.update(drive, dt, trafficRects);
@@ -216,6 +226,7 @@ engine.runRenderLoop(() => {
   const leadGap = leadGapFor(pose, traffic);
   const junction = intersectionAt(pose.x, pose.z);
   const crossTraffic = junction ? crossTrafficInJunction(traffic, junction, pose.heading) : false;
+  const pedestrianAhead = pedestrianHazard(pose.x, pose.z, pose.heading, pedestrians);
   const event = runner.observe(
     {
       heading: pose.heading,
@@ -226,6 +237,7 @@ engine.runRenderLoop(() => {
       leadGap,
       junction,
       crossTraffic,
+      pedestrianAhead,
     },
     dt,
   );

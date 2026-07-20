@@ -17,6 +17,7 @@ const base: DrivingSample = {
   leadGap: null,
   junction: null,
   crossTraffic: false,
+  pedestrianAhead: false,
 };
 
 function feed(coach: DrivingCoach, sample: Partial<DrivingSample>, frames: number, dt = 1 / 60): void {
@@ -61,6 +62,20 @@ describe("DrivingCoach — following distance", () => {
     const coach = new DrivingCoach();
     feed(coach, { speedMph: 3, leadGap: 4 }, 120);
     expect(coach.violations.some((v) => v.kind === "follow")).toBe(false);
+  });
+});
+
+describe("DrivingCoach — pedestrians", () => {
+  it("flags bearing down on a pedestrian in the path", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 15, pedestrianAhead: true }, 60);
+    expect(coach.violations.some((v) => v.kind === "pedestrian")).toBe(true);
+  });
+
+  it("does not flag when slowed for the pedestrian", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 3, pedestrianAhead: true }, 60);
+    expect(coach.violations.some((v) => v.kind === "pedestrian")).toBe(false);
   });
 });
 

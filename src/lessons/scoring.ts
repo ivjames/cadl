@@ -29,9 +29,18 @@ export interface DrivingSample {
   junction: { cx: number; cz: number } | null;
   /** Whether cross traffic is in that junction (traffic to yield to). */
   crossTraffic: boolean;
+  /** Whether a pedestrian is in the car's path ahead. */
+  pedestrianAhead: boolean;
 }
 
-export type ViolationKind = "stop" | "speed" | "signal" | "follow" | "yield" | "block";
+export type ViolationKind =
+  | "stop"
+  | "speed"
+  | "signal"
+  | "follow"
+  | "yield"
+  | "block"
+  | "pedestrian";
 /** Positive things a lesson can require the driver to do. */
 export type AchievementKind = "cleanStop" | "signaledTurn";
 
@@ -57,6 +66,7 @@ export const PENALTIES: Record<ViolationKind, number> = {
   follow: 8,
   yield: 15,
   block: 10,
+  pedestrian: 20,
 };
 
 /** Speed (mph) below which the car counts as fully stopped. */
@@ -76,6 +86,10 @@ export const FOLLOW_MIN_MPH = 5;
 export const FOLLOW_GRACE_S = 0.6;
 /** Sustained seconds stopped inside a junction before "blocking" registers. */
 export const BLOCK_GRACE_S = 2;
+/** Speed above which not yielding to a pedestrian ahead registers. */
+export const PEDESTRIAN_MIN_MPH = 6;
+/** Sustained seconds bearing down on a pedestrian before it registers. */
+export const PEDESTRIAN_GRACE_S = 0.4;
 /** Heading swept (radians) before a manoeuvre counts as a turn. */
 export const TURN_THRESHOLD = 0.7;
 /** Per-frame heading change below which the car isn't turning this frame. */
@@ -102,6 +116,10 @@ export class DrivingCoach {
   private prevJunction: { cx: number; cz: number } | null = null;
   private blockTime = 0;
   private blockFlagged = false;
+
+  // Pedestrian hysteresis.
+  private pedTime = 0;
+  private pedActive = false;
 
   // Stop tracking: min speed + closest distance seen while approaching a control.
   private approachName: string | null = null;
@@ -148,6 +166,8 @@ export class DrivingCoach {
     this.prevJunction = null;
     this.blockTime = 0;
     this.blockFlagged = false;
+    this.pedTime = 0;
+    this.pedActive = false;
     this.approachName = null;
     this.approachMinMph = Infinity;
     this.approachLastDistance = Infinity;
@@ -168,12 +188,27 @@ export class DrivingCoach {
     this.prevHeading = sample.heading;
 
     return (
+      this.checkPedestrian(sample, dt) ??
       this.checkSpeeding(sample, dt) ??
       this.checkFollowing(sample, dt) ??
       this.checkIntersection(sample, dt) ??
       this.checkStops(sample) ??
       this.checkSignals(sample, headingDelta, dt)
     );
+  }
+
+  private checkPedestrian(sample: DrivingSample, dt: number): CoachEvent | null {
+    if (sample.pedestrianAhead && sample.speedMph > PEDESTRIAN_MIN_MPH) {
+      this.pedTime += dt;
+      if (!this.pedActive && this.pedTime >= PEDESTRIAN_GRACE_S) {
+        this.pedActive = true;
+        return this.emit("pedestrian", "Yield to the pedestrian");
+      }
+    } else {
+      this.pedTime = 0;
+      this.pedActive = false;
+    }
+    return null;
   }
 
   private emit(kind: ViolationKind, message: string): Violation {
