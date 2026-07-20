@@ -29,14 +29,19 @@ export interface DriveInput {
   steer: number;
 }
 
-/** Where the vehicle spawns and returns to on reset. */
-export const SPAWN: Readonly<CarState> = { x: 0, z: -22, heading: 0, speed: 0 };
+/**
+ * Where the vehicle spawns and returns to on reset. x is the right-hand lane
+ * centre (ROAD_HALF/2 in the scene) so the car starts in its lane, aligned with
+ * the south approach's stop line and sign rather than straddling the centreline.
+ */
+export const SPAWN: Readonly<CarState> = { x: 2.75, z: -22, heading: 0, speed: 0 };
 
 /** Tunable arcade constants. Deliberately not a physics engine. */
 export const DRIVING = {
   /** Forward acceleration at full gas (m/s²). */
   forwardAccel: 6,
-  /** Reverse acceleration at full brake once stopped (m/s²). */
+  /** Reverse acceleration (m/s²). Reserved for a future dedicated reverse/gear
+   *  control — the brake no longer engages reverse. */
   reverseAccel: 4,
   /** Braking deceleration when rolling forward (m/s²). */
   brakeDecel: 14,
@@ -44,7 +49,7 @@ export const DRIVING = {
   drag: 4,
   /** Top forward speed (m/s ≈ 45 mph). */
   maxForward: 20,
-  /** Top reverse speed (m/s ≈ 11 mph). */
+  /** Top reverse speed (m/s ≈ 11 mph). Reserved (see reverseAccel). */
   maxReverse: 5,
   /** Yaw rate at full steer and full steering authority (rad/s). */
   steerRate: 1.4,
@@ -80,13 +85,9 @@ export function stepCar(state: CarState, input: DriveInput, dt: number): CarStat
   let speed = state.speed;
 
   if (brake > 0) {
-    if (speed > DRIVING.stopEpsilon) {
-      // Rolling forward: bleed off toward a full stop, never past it.
-      speed = Math.max(0, speed - brake * DRIVING.brakeDecel * dt);
-    } else {
-      // Stopped or already reversing: build up reverse speed.
-      speed -= brake * DRIVING.reverseAccel * dt;
-    }
+    // Brake bleeds speed toward a full stop and holds there — it never engages
+    // reverse, so the car won't roll backward when braking from a standstill.
+    speed = Math.max(0, speed - brake * DRIVING.brakeDecel * dt);
   } else if (gas > 0) {
     speed += gas * DRIVING.forwardAccel * dt;
   } else {
