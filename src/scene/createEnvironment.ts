@@ -219,8 +219,9 @@ export function createEnvironment(scene: Scene): void {
     }
   }
 
-  // --- Zebra crosswalks where pedestrians cross ---
-  for (const [ax, az, bx, bz] of CROSSINGS) {
+  // --- Zebra crosswalks at MARKED crossings only (unmarked ones get no paint) ---
+  for (const { ax, az, bx, bz, striped } of CROSSINGS) {
+    if (!striped) continue;
     const crossingX = Math.abs(bz - az) < 0.01; // pedestrians move in X → N-S road
     for (let k = -2; k <= 2; k += 1) {
       if (crossingX) {
