@@ -188,6 +188,7 @@ if (import.meta.env.DEV) {
 engine.runRenderLoop(() => {
   // Clamp dt so a backgrounded tab regaining focus can't teleport the car.
   const dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
+  input.update(dt); // ease the analog pedals toward their held targets
   const drive = input.read();
 
   const headingBefore = vehicle.pose.heading;

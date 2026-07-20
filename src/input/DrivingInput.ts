@@ -10,6 +10,20 @@ const KEY_MAP: Record<HeldControl, readonly string[]> = {
   right: ["KeyD", "ArrowRight"],
 };
 
+/** Pedal easing rates (units of travel per second): press-in vs release. */
+const PEDAL = {
+  gasRise: 2.2, // ~0.45 s to full throttle
+  gasFall: 4.5, // lifts off quickly when released
+  brakeRise: 3.5, // firm but progressive application
+  brakeFall: 6, // releases fast
+} as const;
+
+/** Move `value` toward `target` by at most `rate·dt`. */
+function ease(value: number, target: number, rate: number, dt: number): number {
+  const step = rate * dt;
+  return value < target ? Math.min(target, value + step) : Math.max(target, value - step);
+}
+
 /**
  * Unifies keyboard and pointer/touch input into a single {@link DriveInput}.
  *
@@ -31,6 +45,10 @@ export class DrivingInput {
   private steerAxis = 0;
   /** Transmission gear: false = Drive, true = Reverse. Toggled, not held. */
   private reverse = false;
+  /** Analog pedal positions, 0..1, eased toward their held target each frame so
+   *  the throttle and brake apply progressively rather than snapping on/off. */
+  private gasValue = 0;
+  private brakeValue = 0;
 
   /** Subscribe to keyboard + focus-loss events on the given window. */
   attach(target: Window): void {
@@ -95,14 +113,23 @@ export class DrivingInput {
     return KEY_MAP[control].some((code) => this.keys.has(code));
   }
 
+  /**
+   * Advance the analog pedals toward their held targets. Call once per frame
+   * (before {@link read}) so gas and brake ramp in and out instead of snapping.
+   */
+  update(dt: number): void {
+    this.gasValue = ease(this.gasValue, this.isHeld("gas") ? 1 : 0, this.isHeld("gas") ? PEDAL.gasRise : PEDAL.gasFall, dt);
+    this.brakeValue = ease(this.brakeValue, this.isHeld("brake") ? 1 : 0, this.isHeld("brake") ? PEDAL.brakeRise : PEDAL.brakeFall, dt);
+  }
+
   /** Snapshot the combined driver intent for this frame. */
   read(): DriveInput {
     const left = this.isHeld("left");
     const right = this.isHeld("right");
     const digital = (right ? 1 : 0) - (left ? 1 : 0);
     return {
-      gas: this.isHeld("gas") ? 1 : 0,
-      brake: this.isHeld("brake") ? 1 : 0,
+      gas: this.gasValue,
+      brake: this.brakeValue,
       // Combine keyboard/button steering with the analog wheel.
       steer: Math.max(-1, Math.min(1, digital + this.steerAxis)),
       reverse: this.reverse,
@@ -115,5 +142,7 @@ export class DrivingInput {
     this.touch = { gas: false, brake: false, left: false, right: false };
     this.steerAxis = 0;
     this.reverse = false;
+    this.gasValue = 0;
+    this.brakeValue = 0;
   }
 }
