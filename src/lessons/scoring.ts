@@ -44,7 +44,11 @@ export type ViolationKind =
   | "block"
   | "pedestrian";
 /** Positive things a lesson can require the driver to do. */
-export type AchievementKind = "cleanStop" | "signaledTurn" | "parked";
+export type AchievementKind =
+  | "cleanStop"
+  | "signaledTurn"
+  | "parked"
+  | "yieldedPedestrian";
 
 export interface Violation {
   type: "violation";
@@ -92,6 +96,10 @@ export const BLOCK_GRACE_S = 2;
 export const PEDESTRIAN_MIN_MPH = 6;
 /** Sustained seconds bearing down on a pedestrian before it registers. */
 export const PEDESTRIAN_GRACE_S = 0.4;
+/** Speed below which slowing for a pedestrian ahead counts as yielding (mph). */
+export const PEDESTRIAN_YIELD_MPH = 2.5;
+/** Sustained seconds crawling for a pedestrian ahead before a yield is credited. */
+export const PEDESTRIAN_YIELD_S = 0.4;
 /** Sustained seconds held inside the bay at rest before a park is awarded. */
 export const PARK_HOLD_S = 0.5;
 /** Heading swept (radians) before a manoeuvre counts as a turn. */
@@ -124,6 +132,9 @@ export class DrivingCoach {
   // Pedestrian hysteresis.
   private pedTime = 0;
   private pedActive = false;
+  // Positive: sustained time crawling for a pedestrian ahead, and a one-shot latch.
+  private pedYieldTime = 0;
+  private pedYieldAwarded = false;
 
   // Parking: sustained time held inside the bay at rest, and a one-shot latch.
   private parkTime = 0;
@@ -176,6 +187,8 @@ export class DrivingCoach {
     this.blockFlagged = false;
     this.pedTime = 0;
     this.pedActive = false;
+    this.pedYieldTime = 0;
+    this.pedYieldAwarded = false;
     this.parkTime = 0;
     this.parkedAwarded = false;
     this.approachName = null;
@@ -223,15 +236,32 @@ export class DrivingCoach {
   }
 
   private checkPedestrian(sample: DrivingSample, dt: number): CoachEvent | null {
-    if (sample.pedestrianAhead && sample.speedMph > PEDESTRIAN_MIN_MPH) {
-      this.pedTime += dt;
-      if (!this.pedActive && this.pedTime >= PEDESTRIAN_GRACE_S) {
-        this.pedActive = true;
-        return this.emit("pedestrian", "Yield to the pedestrian");
+    if (sample.pedestrianAhead) {
+      if (sample.speedMph > PEDESTRIAN_MIN_MPH) {
+        // Bearing down on a pedestrian: a violation once sustained.
+        this.pedYieldTime = 0;
+        this.pedTime += dt;
+        if (!this.pedActive && this.pedTime >= PEDESTRIAN_GRACE_S) {
+          this.pedActive = true;
+          return this.emit("pedestrian", "Yield to the pedestrian");
+        }
+      } else if (sample.speedMph <= PEDESTRIAN_YIELD_MPH) {
+        // Crawling for a pedestrian ahead: credit a yield (once).
+        this.pedTime = 0;
+        this.pedYieldTime += dt;
+        if (!this.pedYieldAwarded && this.pedYieldTime >= PEDESTRIAN_YIELD_S) {
+          this.pedYieldAwarded = true;
+          return this.award("yieldedPedestrian", "Yielded to the pedestrian");
+        }
+      } else {
+        // Between the two thresholds: neither a violation nor yet a yield.
+        this.pedTime = 0;
+        this.pedYieldTime = 0;
       }
     } else {
       this.pedTime = 0;
       this.pedActive = false;
+      this.pedYieldTime = 0;
     }
     return null;
   }

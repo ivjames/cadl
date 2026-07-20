@@ -26,6 +26,7 @@ export const ACHIEVEMENT_LABELS: Record<AchievementKind, string> = {
   cleanStop: "Come to a full stop at the line",
   signaledTurn: "Signal and complete a turn",
   parked: "Come to rest inside the marked bay",
+  yieldedPedestrian: "Slow to a crawl for a pedestrian in your path",
 };
 
 /**
@@ -67,6 +68,14 @@ export const LESSONS: readonly LessonDef[] = [
     instruction: "Stop at the line, then signal and complete your turn — no speeding.",
     require: ["cleanStop", "signaledTurn"],
     failOn: ["stop", "signal", "speed"],
+    passScore: 80,
+  },
+  {
+    id: "crosswalk",
+    title: "Yield to Pedestrians",
+    instruction: "A pedestrian is crossing ahead — slow to a crawl and let them clear the crosswalk.",
+    require: ["yieldedPedestrian"],
+    failOn: ["pedestrian"],
     passScore: 80,
   },
   {
