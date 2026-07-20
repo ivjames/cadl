@@ -34,7 +34,8 @@ Desktop keyboard:
 - `D` / `Arrow Right`: steer right
 - `Z` / `,`: signal left · `X` / `.`: signal right (auto-cancels after the turn)
 - `C`: switch camera (follow ↔ overview)
-- `R`: reset to spawn
+- `R`: reset / restart the current lesson
+- `L`: next lesson
 
 Touch (iPad Safari, landscape-first): on-screen steering (bottom-left), gas +
 brake (bottom-right), turn signals (bottom-centre), and camera/reset (top-right).
@@ -56,14 +57,28 @@ src/
   vehicle/TrainingVehicle.ts  procedural car meshes (incl. blinkers) driven by the model
   rules/speedZones.ts         pure speed-limit zones + lookup
   rules/stopControls.ts       pure stop-sign/limit-line geometry + "stop ahead" detection
+  lessons/scoring.ts          pure driving coach: grades violations + achievements
+  lessons/lessons.ts          data-driven California lesson definitions
+  lessons/LessonRunner.ts     runs a lesson over the coach; tracks objectives + pass/fail
   scene/createEnvironment.ts  roads, markings, curbs, sidewalks, scenery, traffic signs
   ui/TouchControls.ts         pointer-event wiring for the on-screen controls
   style.css                   mobile-first control layout + HUD
 ```
 
-The `rules/` and `vehicle/driving.ts`/`signals.ts` modules are Babylon-free so
-the traffic-rule and vehicle logic is unit-tested without a renderer — the
-foundation the upcoming scenario/lesson/scoring layer will build on.
+Everything under `rules/`, `lessons/`, and `vehicle/driving.ts`/`signals.ts` is
+Babylon/DOM-free, so the traffic-rule, scoring, and lesson logic is unit-tested
+without a renderer. `main.ts` feeds a per-frame `DrivingSample` into the active
+`LessonRunner`, which grades it and drives the HUD.
+
+## Lessons
+
+Cycle lessons with the **Lesson ▸** button (or `L`). Each shows its objectives,
+a live score, and a pass/fail result:
+
+- **Free Drive** — open scorecard (stops, speed, signalling).
+- **Stop & Go** — make a full stop at the limit line.
+- **Signal Your Turn** — signal, then complete a turn.
+- **Full Intersection** — stop, then signal and turn, without speeding.
 
 Rule/behaviour logic (`vehicle/driving.ts`) is deliberately free of Babylon.js
 so it can be unit tested without a renderer:
