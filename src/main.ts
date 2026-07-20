@@ -30,7 +30,7 @@ import {
 import { WORLD } from "./rules/roadGrid";
 import { isOverLimit, speedLimitAt } from "./rules/speedZones";
 import { stopSignAhead } from "./rules/stopControls";
-import { crossTrafficInJunction, intersectionAt } from "./rules/intersections";
+import { crossTrafficInJunction, intersectionAt, junctionAhead } from "./rules/intersections";
 import { LESSONS, PARKING_BAY } from "./lessons/lessons";
 import { LessonRunner, type LessonStatus } from "./lessons/LessonRunner";
 
@@ -252,6 +252,8 @@ engine.runRenderLoop(() => {
   const leadGap = leadGapFor(pose, traffic);
   const junction = intersectionAt(pose.x, pose.z);
   const crossTraffic = junction ? crossTrafficInJunction(traffic, junction, pose.heading) : false;
+  const ahead = junctionAhead(pose.x, pose.z, pose.heading);
+  const crossTrafficAhead = ahead ? crossTrafficInJunction(traffic, ahead, pose.heading) : false;
   const pedestrianAhead = pedestrianHazard(pose.x, pose.z, pose.heading, pedestrians);
   const bay = LESSONS[lessonIndex]?.bay;
   const parked = bay ? isParked(bay, pose.x, pose.z, pose.heading, pose.speedMph) : false;
@@ -265,6 +267,7 @@ engine.runRenderLoop(() => {
       leadGap,
       junction,
       crossTraffic,
+      crossTrafficAhead,
       pedestrianAhead,
       parked,
     },

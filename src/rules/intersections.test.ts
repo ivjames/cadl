@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crossTrafficInJunction, intersectionAt } from "./intersections";
+import { crossTrafficInJunction, intersectionAt, junctionAhead } from "./intersections";
 import type { TrafficCar } from "../traffic/traffic";
 
 describe("intersectionAt", () => {
@@ -14,6 +14,26 @@ describe("intersectionAt", () => {
 
   it("finds a non-origin junction", () => {
     expect(intersectionAt(60, 60)).toEqual({ cx: 60, cz: 60 });
+  });
+});
+
+describe("junctionAhead", () => {
+  it("finds the origin junction when approaching it from the south heading north", () => {
+    // On the x=0 road just south of the origin box, heading north (+Z).
+    expect(junctionAhead(2.75, -9, 0)).toEqual({ cx: 0, cz: 0 });
+  });
+
+  it("returns null when already inside the box", () => {
+    expect(junctionAhead(0, 0, 0)).toBeNull();
+  });
+
+  it("returns null mid-block with no junction within the probe", () => {
+    expect(junctionAhead(2.75, -30, 0)).toBeNull();
+  });
+
+  it("does not see a junction behind the car", () => {
+    // Just north of the origin heading further north: the origin is behind.
+    expect(junctionAhead(2.75, 9, 0)).toBeNull();
   });
 });
 

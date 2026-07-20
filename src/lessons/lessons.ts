@@ -27,6 +27,7 @@ export const ACHIEVEMENT_LABELS: Record<AchievementKind, string> = {
   signaledTurn: "Signal and complete a turn",
   parked: "Come to rest inside the marked bay",
   yieldedPedestrian: "Slow to a crawl for a pedestrian in your path",
+  yieldedCrossTraffic: "Wait for cross traffic before entering the intersection",
 };
 
 /**
@@ -68,6 +69,14 @@ export const LESSONS: readonly LessonDef[] = [
     instruction: "Stop at the line, then signal and complete your turn — no speeding.",
     require: ["cleanStop", "signaledTurn"],
     failOn: ["stop", "signal", "speed"],
+    passScore: 80,
+  },
+  {
+    id: "right-of-way",
+    title: "Right of Way",
+    instruction: "Cross traffic has the intersection — wait at the line until it clears, then go.",
+    require: ["yieldedCrossTraffic"],
+    failOn: ["yield"],
     passScore: 80,
   },
   {
