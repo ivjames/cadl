@@ -42,12 +42,18 @@ export const PENALTIES: Record<ViolationKind, number> = {
 export const FULL_STOP_MPH = 1.5;
 /** A stop control announced within this distance means we're in its stop zone. */
 export const STOP_ZONE_M = 12;
+/** Only grade a stop if the car got at least this close to the line — otherwise
+ *  it left the zone by turning away, not by crossing the line. */
+export const STOP_CROSS_M = 3;
 /** Sustained seconds over the limit before a speeding violation registers. */
 export const SPEEDING_GRACE_S = 0.75;
 /** Heading swept (radians) before a manoeuvre counts as a turn. */
 export const TURN_THRESHOLD = 0.7;
-/** Per-frame heading change below which the car is "going straight". */
+/** Per-frame heading change below which the car isn't turning this frame. */
 export const STRAIGHT_EPSILON = 0.005;
+/** Sustained straight time (s) before a manoeuvre is considered finished — so a
+ *  single slow frame mid-turn doesn't reset it. */
+export const STRAIGHT_HOLD_S = 0.35;
 
 const STARTING_SCORE = 100;
 
@@ -59,14 +65,16 @@ export class DrivingCoach {
   private overLimitTime = 0;
   private speedingActive = false;
 
-  // Stop tracking: min speed seen while approaching the current stop control.
+  // Stop tracking: min speed + closest distance seen while approaching a control.
   private approachName: string | null = null;
   private approachMinMph = Infinity;
+  private approachLastDistance = Infinity;
 
   // Turn / signal tracking.
   private prevHeading: number | null = null;
   private turnAccum = 0;
   private turnFlagged = false;
+  private straightTime = 0;
   private sawLeftSignal = false;
   private sawRightSignal = false;
 
@@ -85,9 +93,11 @@ export class DrivingCoach {
     this.speedingActive = false;
     this.approachName = null;
     this.approachMinMph = Infinity;
+    this.approachLastDistance = Infinity;
     this.prevHeading = null;
     this.turnAccum = 0;
     this.turnFlagged = false;
+    this.straightTime = 0;
     this.sawLeftSignal = false;
     this.sawRightSignal = false;
   }
@@ -102,7 +112,7 @@ export class DrivingCoach {
     return (
       this.checkSpeeding(sample, dt) ??
       this.checkStops(sample) ??
-      this.checkSignals(sample, headingDelta)
+      this.checkSignals(sample, headingDelta, dt)
     );
   }
 
@@ -129,26 +139,32 @@ export class DrivingCoach {
   private checkStops(sample: DrivingSample): Violation | null {
     const inZone =
       sample.stopAhead !== null && sample.stopAhead.distance <= STOP_ZONE_M
-        ? sample.stopAhead.name
+        ? sample.stopAhead
         : null;
 
     if (inZone !== null) {
-      // Approaching a stop line: remember the slowest speed reached before it.
-      if (inZone !== this.approachName) {
-        this.approachName = inZone;
+      // Approaching a stop line: track the slowest speed and closest distance.
+      if (inZone.name !== this.approachName) {
+        this.approachName = inZone.name;
         this.approachMinMph = Infinity;
+        this.approachLastDistance = Infinity;
       }
       this.approachMinMph = Math.min(this.approachMinMph, sample.speedMph);
+      this.approachLastDistance = inZone.distance;
       return null;
     }
 
-    // Just left a stop zone — grade whether we actually stopped.
+    // Left a stop zone. Only grade it as rolling the stop if the car actually
+    // reached the line (got within STOP_CROSS_M) — leaving by turning away
+    // early is not a rolled stop.
     if (this.approachName !== null) {
+      const crossedLine = this.approachLastDistance <= STOP_CROSS_M;
       const rolledThrough = this.approachMinMph > FULL_STOP_MPH;
-      this.approachName = null;
       const minMph = this.approachMinMph;
+      this.approachName = null;
       this.approachMinMph = Infinity;
-      if (rolledThrough) {
+      this.approachLastDistance = Infinity;
+      if (crossedLine && rolledThrough) {
         return this.emit({
           kind: "stop",
           message: `Rolled the stop (${Math.round(minMph)} mph)`,
@@ -158,16 +174,21 @@ export class DrivingCoach {
     return null;
   }
 
-  private checkSignals(sample: DrivingSample, headingDelta: number): Violation | null {
-    const straight = Math.abs(headingDelta) < STRAIGHT_EPSILON;
-    if (straight) {
-      this.turnAccum = 0;
-      this.turnFlagged = false;
-      this.sawLeftSignal = false;
-      this.sawRightSignal = false;
+  private checkSignals(sample: DrivingSample, headingDelta: number, dt: number): Violation | null {
+    // A single slow frame isn't "straight" — only sustained straightness ends
+    // the manoeuvre, so slow (low-speed) turns still accumulate and get graded.
+    if (Math.abs(headingDelta) < STRAIGHT_EPSILON) {
+      this.straightTime += dt;
+      if (this.straightTime >= STRAIGHT_HOLD_S) {
+        this.turnAccum = 0;
+        this.turnFlagged = false;
+        this.sawLeftSignal = false;
+        this.sawRightSignal = false;
+      }
       return null;
     }
 
+    this.straightTime = 0;
     this.turnAccum += headingDelta;
     if (sample.signal === "left") this.sawLeftSignal = true;
     if (sample.signal === "right") this.sawRightSignal = true;
