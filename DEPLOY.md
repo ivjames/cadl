@@ -25,16 +25,16 @@ cd /var/www/cadl
 ln -sf /var/www/cadl/bin/cadl /usr/local/bin/cadl   # install the operate CLI
 npm ci
 npm run build
-PORT="$(grep -oE 'PORT=[0-9]+' .env | cut -d= -f2)"
-pm2 serve /var/www/cadl/dist "$PORT" --name cadl --spa
+pm2 startOrReload ecosystem.config.cjs              # or just: cadl restart
 pm2 save
 ```
 
-`provision-site` seeds `/var/www/cadl/.env` with the local `PORT` it reserved
-(8060+) and points the nginx vhost at it, so the `pm2 serve` port must match
-that `.env` (the snippet above reads it back). Reboot survival relies on the
-pm2 startup hook already installed on the droplet (`systemctl is-enabled
-pm2-root` → enabled); `pm2 save` writes the dump it replays.
+The app is a tiny dependency-free static server (`server.mjs`) run under pm2 via
+`ecosystem.config.cjs`. It reads its port from `/var/www/cadl/.env` — the same
+`PORT` `provision-site` reserved (8060+) and pointed the nginx vhost at — so the
+app and nginx can't disagree on the port. Reboot survival relies on the pm2
+startup hook already installed on the droplet (`systemctl is-enabled pm2-root` →
+enabled); `pm2 save` writes the dump it replays.
 
 ## Routine deploys
 
@@ -45,10 +45,10 @@ cadl deploy
 ```
 
 That runs: `git fetch` + `reset --hard origin/main` → `npm ci` → `npm run
-build` → `pm2 restart cadl` → `pm2 save`. Other operate commands:
+build` → `pm2 startOrReload` → `pm2 save`. Other operate commands:
 
 ```bash
-cadl restart   # restart without rebuilding (or first-time pm2 serve)
+cadl restart   # start/reload the pm2 app without rebuilding
 cadl logs      # tail pm2 logs
 cadl status    # pm2 describe cadl
 ```
@@ -66,6 +66,26 @@ curl -s  https://cadl.lab980.com | grep -o 'src="/assets/[^"]*"'  # hashed asset
 Because `base` is `/` (not the old `/cadl/`), built asset URLs resolve from the
 subdomain root. If you ever see 404s for `/cadl/assets/...`, a stale
 GitHub-Pages-era build is being served — rebuild.
+
+## Troubleshooting a 502
+
+A 502 means nginx is up but can't reach the app on its local port. Check, in
+order:
+
+```bash
+pm2 describe cadl                    # is it 'online', or 'errored'/stopped?
+cadl logs                            # why it crashed, if it did
+PORT="$(grep -oE 'PORT=[0-9]+' /var/www/cadl/.env | cut -d= -f2)"
+curl -sI "http://127.0.0.1:$PORT/"   # does the app answer directly?
+grep proxy_pass /etc/nginx/sites-available/cadl.lab980.com   # nginx's port
+```
+
+The app and nginx both derive the port from `/var/www/cadl/.env`, so they should
+always match. If `curl` to the local port works but the site still 502s, reload
+nginx (`nginx -t && systemctl reload nginx`). If the app isn't listening, run
+`cadl restart` and re-check `cadl logs`. (Earlier revisions used `pm2 serve`,
+whose port lived only in pm2's args and could revert to 8080 on a
+`--update-env` restart — the `.env`-driven `server.mjs` removes that trap.)
 
 ## Local development
 

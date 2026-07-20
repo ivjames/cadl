@@ -40,14 +40,12 @@ deploy() {
 restart() {
   local p; p="$(port)"
   [ -n "$p" ] || die "no PORT in $DIR/.env (run provision-site first)."
-  if pm2 describe "$APP" >/dev/null 2>&1; then
-    log "restarting pm2 app '$APP'"
-    pm2 restart "$APP" --update-env
-  else
-    log "starting pm2 app '$APP' (static serve of dist/ on :$p)"
-    # --spa so client-side routes fall back to index.html.
-    PORT="$p" pm2 serve "$DIR/dist" "$p" --name "$APP" --spa
-  fi
+  [ -d "$DIR/dist" ] || die "no dist/ to serve — run 'cadl deploy' (or npm run build) first."
+  # startOrReload brings the app up if it's down and reloads it in place if it's
+  # already running. The port comes from .env via server.mjs, so it can't drift
+  # out of sync with the nginx proxy_pass the way `pm2 serve` args could.
+  log "starting/reloading pm2 app '$APP' (static serve of dist/ on :$p)"
+  pm2 startOrReload "$DIR/ecosystem.config.cjs"
   pm2 save
 }
 
