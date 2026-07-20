@@ -22,6 +22,7 @@ import {
 } from "./vehicle/signals";
 import { isOverLimit, speedLimitAt } from "./rules/speedZones";
 import { stopSignAhead } from "./rules/stopControls";
+import { DrivingCoach } from "./lessons/scoring";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#renderCanvas");
 if (!canvas) throw new Error("Render canvas was not found.");
@@ -69,10 +70,13 @@ function toggleSignal(direction: SignalDirection): void {
   signal = setSignal(signal, direction);
 }
 
+const coach = new DrivingCoach();
+
 function resetVehicle(): void {
   vehicle.reset();
   input.clear(); // reset must also drop any active input state
   signal = initialSignalState();
+  coach.reset();
 }
 
 // Edge-triggered keyboard shortcuts (held movement keys live in DrivingInput).
@@ -101,6 +105,9 @@ const indLeft = document.querySelector<HTMLElement>("#indLeft");
 const indRight = document.querySelector<HTMLElement>("#indRight");
 const signalLeftButton = document.querySelector<HTMLElement>("#signalLeft");
 const signalRightButton = document.querySelector<HTMLElement>("#signalRight");
+const coachScoreElement = document.querySelector<HTMLElement>("#coachScore");
+const coachFlashElement = document.querySelector<HTMLElement>("#coachFlash");
+let flashTimer = 0;
 
 let blinkOn = false;
 let blinkTimer = 0;
@@ -124,26 +131,47 @@ engine.runRenderLoop(() => {
   const lit = signal.active !== null && blinkOn;
   vehicle.setBlinkers(signal.active, lit);
 
-  // HUD.
+  // HUD + rule outputs.
   const limit = speedLimitAt(pose.x, pose.z);
-  const speedMph = Math.round(pose.speedMph);
+  const over = isOverLimit(pose.speedMph, limit.limitMph);
+  const stop = stopSignAhead(pose.x, pose.z, pose.heading);
+
   if (speedElement) {
-    speedElement.textContent = `${speedMph} mph`;
-    speedElement.classList.toggle("over-limit", isOverLimit(pose.speedMph, limit.limitMph));
+    speedElement.textContent = `${Math.round(pose.speedMph)} mph`;
+    speedElement.classList.toggle("over-limit", over);
   }
   if (gearElement) {
     gearElement.textContent = pose.speed > 0.1 ? "D" : pose.speed < -0.1 ? "R" : "N";
   }
   if (limitElement) limitElement.textContent = String(limit.limitMph);
   if (zoneElement) zoneElement.textContent = limit.zone ?? "";
-
-  const stop = stopSignAhead(pose.x, pose.z, pose.heading);
   if (stopCueElement) {
     if (stop) {
       stopCueElement.textContent = `◈ STOP AHEAD · ${Math.round(stop.distance)} m`;
       stopCueElement.hidden = false;
     } else {
       stopCueElement.hidden = true;
+    }
+  }
+
+  // Coach: grade the frame and surface score + a brief flash on a violation.
+  const violation = coach.observe(
+    { heading: pose.heading, speedMph: pose.speedMph, overLimit: over, signal: signal.active, stopAhead: stop },
+    dt,
+  );
+  if (coachScoreElement) {
+    coachScoreElement.textContent = String(coach.score);
+    coachScoreElement.classList.toggle("warn", coach.score < 90 && coach.score >= 70);
+    coachScoreElement.classList.toggle("bad", coach.score < 70);
+  }
+  if (coachFlashElement) {
+    if (violation) {
+      coachFlashElement.textContent = `− ${violation.message}`;
+      coachFlashElement.classList.add("show");
+      flashTimer = 2.2;
+    } else if (flashTimer > 0) {
+      flashTimer -= dt;
+      if (flashTimer <= 0) coachFlashElement.classList.remove("show");
     }
   }
 
