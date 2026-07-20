@@ -13,6 +13,15 @@ import { DrivingInput } from "./input/DrivingInput";
 import { createEnvironment } from "./scene/createEnvironment";
 import { setupTouchControls } from "./ui/TouchControls";
 import { TrainingVehicle } from "./vehicle/TrainingVehicle";
+import {
+  type SignalDirection,
+  type SignalState,
+  initialSignalState,
+  setSignal,
+  updateSignal,
+} from "./vehicle/signals";
+import { isOverLimit, speedLimitAt } from "./rules/speedZones";
+import { stopSignAhead } from "./rules/stopControls";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#renderCanvas");
 if (!canvas) throw new Error("Render canvas was not found.");
@@ -55,9 +64,15 @@ function toggleCamera(): void {
 const input = new DrivingInput();
 input.attach(window);
 
+let signal: SignalState = initialSignalState();
+function toggleSignal(direction: SignalDirection): void {
+  signal = setSignal(signal, direction);
+}
+
 function resetVehicle(): void {
   vehicle.reset();
   input.clear(); // reset must also drop any active input state
+  signal = initialSignalState();
 }
 
 // Edge-triggered keyboard shortcuts (held movement keys live in DrivingInput).
@@ -65,16 +80,79 @@ window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
   if (event.code === "KeyC") toggleCamera();
   if (event.code === "KeyR") resetVehicle();
+  if (event.code === "KeyZ" || event.code === "Comma") toggleSignal("left");
+  if (event.code === "KeyX" || event.code === "Period") toggleSignal("right");
 });
 
-setupTouchControls(input, { onToggleCamera: toggleCamera, onReset: resetVehicle });
+setupTouchControls(input, {
+  onToggleCamera: toggleCamera,
+  onReset: resetVehicle,
+  onSignalLeft: () => toggleSignal("left"),
+  onSignalRight: () => toggleSignal("right"),
+});
 
+// HUD element handles.
 const speedElement = document.querySelector<HTMLElement>("#speed");
+const gearElement = document.querySelector<HTMLElement>("#gear");
+const limitElement = document.querySelector<HTMLElement>("#speedLimit");
+const zoneElement = document.querySelector<HTMLElement>("#zoneLabel");
+const stopCueElement = document.querySelector<HTMLElement>("#stopCue");
+const indLeft = document.querySelector<HTMLElement>("#indLeft");
+const indRight = document.querySelector<HTMLElement>("#indRight");
+const signalLeftButton = document.querySelector<HTMLElement>("#signalLeft");
+const signalRightButton = document.querySelector<HTMLElement>("#signalRight");
+
+let blinkOn = false;
+let blinkTimer = 0;
+
 engine.runRenderLoop(() => {
   // Clamp dt so a backgrounded tab regaining focus can't teleport the car.
   const dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
-  vehicle.update(input.read(), dt);
-  if (speedElement) speedElement.textContent = `${Math.round(vehicle.speedMph)} mph`;
+  const drive = input.read();
+
+  const headingBefore = vehicle.pose.heading;
+  vehicle.update(drive, dt);
+  const pose = vehicle.pose;
+
+  // Turn signals: advance the state machine, then run the blink timer.
+  signal = updateSignal(signal, pose.heading - headingBefore, drive.steer);
+  blinkTimer += dt;
+  if (blinkTimer >= 0.45) {
+    blinkOn = !blinkOn;
+    blinkTimer = 0;
+  }
+  const lit = signal.active !== null && blinkOn;
+  vehicle.setBlinkers(signal.active, lit);
+
+  // HUD.
+  const limit = speedLimitAt(pose.x, pose.z);
+  const speedMph = Math.round(pose.speedMph);
+  if (speedElement) {
+    speedElement.textContent = `${speedMph} mph`;
+    speedElement.classList.toggle("over-limit", isOverLimit(pose.speedMph, limit.limitMph));
+  }
+  if (gearElement) {
+    gearElement.textContent = pose.speed > 0.1 ? "D" : pose.speed < -0.1 ? "R" : "N";
+  }
+  if (limitElement) limitElement.textContent = String(limit.limitMph);
+  if (zoneElement) zoneElement.textContent = limit.zone ?? "";
+
+  const stop = stopSignAhead(pose.x, pose.z, pose.heading);
+  if (stopCueElement) {
+    if (stop) {
+      stopCueElement.textContent = `◈ STOP AHEAD · ${Math.round(stop.distance)} m`;
+      stopCueElement.hidden = false;
+    } else {
+      stopCueElement.hidden = true;
+    }
+  }
+
+  // HUD chevrons + buttons blink via CSS; drive them by the signal state only.
+  indLeft?.classList.toggle("on", signal.active === "left");
+  indRight?.classList.toggle("on", signal.active === "right");
+  signalLeftButton?.classList.toggle("on", signal.active === "left");
+  signalRightButton?.classList.toggle("on", signal.active === "right");
+
   scene.render();
 });
 

@@ -10,13 +10,33 @@
     <canvas id="renderCanvas" aria-label="CADL 3D driving simulator"></canvas>
 
     <div id="hud">
-      <strong>CADL</strong>
-      <span id="speed">0 mph</span>
+      <div class="hud-row">
+        <strong>CADL</strong>
+        <span id="gear" class="hud-gear">P</span>
+        <span id="speed">0 mph</span>
+      </div>
+      <div class="hud-row hud-sub">
+        <span class="limit">
+          <span id="speedLimit" class="limit-num">25</span>
+          <span class="limit-unit">mph limit</span>
+        </span>
+        <span id="zoneLabel" class="zone-label"></span>
+        <span id="signalIndicator" class="signal-ind" aria-live="off">
+          <span id="indLeft" class="ind">◀</span>
+          <span id="indRight" class="ind">▶</span>
+        </span>
+      </div>
+      <div id="stopCue" class="stop-cue" hidden>◈ STOP AHEAD</div>
     </div>
 
     <div id="topControls" class="control-cluster">
       <button id="cameraButton" type="button">Camera</button>
       <button id="resetButton" type="button">Reset</button>
+    </div>
+
+    <div id="signalControls" class="control-cluster" aria-label="Turn signals">
+      <button id="signalLeft" class="signal-button" type="button" aria-label="Signal left">⬅</button>
+      <button id="signalRight" class="signal-button" type="button" aria-label="Signal right">➡</button>
     </div>
 
     <div id="steeringControls" class="control-cluster driving-controls" aria-label="Steering controls">
