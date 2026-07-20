@@ -8,7 +8,7 @@
 
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { extname, join, relative, isAbsolute, sep } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,7 +81,10 @@ const server = createServer(async (req, res) => {
       : "no-cache";
     res.writeHead(200, { "Content-Type": type, "Cache-Control": cache });
     res.end(req.method === "HEAD" ? undefined : body);
-  } catch {
+  } catch (err) {
+    // Log the real reason so a 500 is diagnosable in `pm2 logs` — the usual
+    // cause is a missing dist/ (build never ran), not a genuine server fault.
+    console.error(`cadl: failed to serve ${req.url}:`, err);
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Internal Server Error");
   }
@@ -89,4 +92,10 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`cadl static server listening on http://${HOST}:${PORT} (serving ${DIST})`);
+  if (!existsSync(join(DIST, "index.html"))) {
+    console.error(
+      `cadl: WARNING — ${join(DIST, "index.html")} is missing. ` +
+        `Run 'npm run build' (or 'cadl deploy'); every request will 500 until dist/ exists.`,
+    );
+  }
 });
