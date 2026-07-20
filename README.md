@@ -6,6 +6,8 @@ California Driver Learning is a browser-based 3D driver-training simulator.
 
 https://ivjames.github.io/cadl/
 
+The live site is deployed from the compiled Vite `dist` artifact through GitHub Actions.
+
 ## Initial stack
 
 - TypeScript
