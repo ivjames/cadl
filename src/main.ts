@@ -26,6 +26,7 @@ import {
 import { WORLD } from "./rules/roadGrid";
 import { isOverLimit, speedLimitAt } from "./rules/speedZones";
 import { stopSignAhead } from "./rules/stopControls";
+import { crossTrafficInJunction, intersectionAt } from "./rules/intersections";
 import { LESSONS } from "./lessons/lessons";
 import { LessonRunner, type LessonStatus } from "./lessons/LessonRunner";
 
@@ -213,6 +214,8 @@ engine.runRenderLoop(() => {
 
   // Lesson: grade the frame, then surface score, objectives, status, and a flash.
   const leadGap = leadGapFor(pose, traffic);
+  const junction = intersectionAt(pose.x, pose.z);
+  const crossTraffic = junction ? crossTrafficInJunction(traffic, junction, pose.heading) : false;
   const event = runner.observe(
     {
       heading: pose.heading,
@@ -221,6 +224,8 @@ engine.runRenderLoop(() => {
       signal: signal.active,
       stopAhead: stop,
       leadGap,
+      junction,
+      crossTraffic,
     },
     dt,
   );

@@ -10,6 +10,8 @@ const base: DrivingSample = {
   signal: null,
   stopAhead: null,
   leadGap: null,
+  junction: null,
+  crossTraffic: false,
 };
 
 const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;

@@ -15,6 +15,8 @@ const base: DrivingSample = {
   signal: null,
   stopAhead: null,
   leadGap: null,
+  junction: null,
+  crossTraffic: false,
 };
 
 function feed(coach: DrivingCoach, sample: Partial<DrivingSample>, frames: number, dt = 1 / 60): void {
@@ -59,6 +61,33 @@ describe("DrivingCoach — following distance", () => {
     const coach = new DrivingCoach();
     feed(coach, { speedMph: 3, leadGap: 4 }, 120);
     expect(coach.violations.some((v) => v.kind === "follow")).toBe(false);
+  });
+});
+
+describe("DrivingCoach — intersections", () => {
+  it("flags entering a junction occupied by cross traffic", () => {
+    const coach = new DrivingCoach();
+    coach.observe({ ...base, junction: null, crossTraffic: true }, 1 / 60); // approaching
+    coach.observe({ ...base, junction: { cx: 0, cz: 0 }, crossTraffic: true }, 1 / 60); // enter
+    expect(coach.violations.some((v) => v.kind === "yield")).toBe(true);
+  });
+
+  it("does not flag entering a clear junction", () => {
+    const coach = new DrivingCoach();
+    coach.observe({ ...base, junction: { cx: 0, cz: 0 }, crossTraffic: false }, 1 / 60);
+    expect(coach.violations.some((v) => v.kind === "yield")).toBe(false);
+  });
+
+  it("flags sitting stopped in a junction", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 0, junction: { cx: 0, cz: 0 } }, 200);
+    expect(coach.violations.some((v) => v.kind === "block")).toBe(true);
+  });
+
+  it("does not flag rolling through a junction", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 12, junction: { cx: 0, cz: 0 } }, 60);
+    expect(coach.violations.some((v) => v.kind === "block")).toBe(false);
   });
 });
 

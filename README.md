@@ -49,7 +49,8 @@ and a "STOP AHEAD" cue when approaching a stop sign.
 
 Ambient AI traffic drives the grid (yields to leaders, cross traffic, and you);
 the car collides with it, and the coach flags following too closely (2-second
-rule).
+rule), failing to yield to cross traffic at an intersection, and blocking the
+box. Drive off any edge and the world loops back.
 
 ## Architecture
 
@@ -61,6 +62,7 @@ src/
   vehicle/signals.ts          pure turn-signal state machine w/ auto-cancel
   vehicle/TrainingVehicle.ts  procedural car meshes (incl. blinkers) driven by the model
   rules/roadGrid.ts           pure city-grid layout (roads, intersections, approaches)
+  rules/intersections.ts      pure junction queries (in-junction, cross traffic)
   rules/obstacles.ts          pure building collision (axis-separated wall slide)
   rules/speedZones.ts         pure speed-limit zones + lookup
   rules/stopControls.ts       stop-control detection, generated from the road grid
