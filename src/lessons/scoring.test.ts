@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vitest";
+import {
+  DrivingCoach,
+  FULL_STOP_MPH,
+  PENALTIES,
+  SPEEDING_GRACE_S,
+  TURN_THRESHOLD,
+  type DrivingSample,
+} from "./scoring";
+
+const base: DrivingSample = {
+  heading: 0,
+  speedMph: 10,
+  overLimit: false,
+  signal: null,
+  stopAhead: null,
+};
+
+function feed(coach: DrivingCoach, sample: Partial<DrivingSample>, frames: number, dt = 1 / 60): void {
+  for (let i = 0; i < frames; i += 1) coach.observe({ ...base, ...sample }, dt);
+}
+
+describe("DrivingCoach — speeding", () => {
+  it("registers one violation after sustained overspeed, not instantly", () => {
+    const coach = new DrivingCoach();
+    coach.observe({ ...base, overLimit: true }, SPEEDING_GRACE_S / 2);
+    expect(coach.violations.length).toBe(0); // still within grace
+    coach.observe({ ...base, overLimit: true }, SPEEDING_GRACE_S);
+    expect(coach.violations.length).toBe(1);
+    expect(coach.score).toBe(100 - PENALTIES.speed);
+  });
+
+  it("does not re-fire until speed drops back under the limit", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { overLimit: true }, 200); // long overspeed
+    expect(coach.violations.length).toBe(1);
+    feed(coach, { overLimit: false }, 10); // back under
+    feed(coach, { overLimit: true }, 200); // over again
+    expect(coach.violations.length).toBe(2);
+  });
+});
+
+describe("DrivingCoach — stops", () => {
+  it("flags rolling through a stop without a full stop", () => {
+    const coach = new DrivingCoach();
+    // Approach the stop zone at 8 mph, then leave it still moving.
+    feed(coach, { speedMph: 8, stopAhead: { name: "S", distance: 6 } }, 30);
+    feed(coach, { speedMph: 8, stopAhead: null }, 1);
+    expect(coach.violations.some((v) => v.kind === "stop")).toBe(true);
+  });
+
+  it("does not flag when the car actually stops in the zone", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 6, stopAhead: { name: "S", distance: 10 } }, 10);
+    feed(coach, { speedMph: FULL_STOP_MPH - 0.5, stopAhead: { name: "S", distance: 4 } }, 10);
+    feed(coach, { speedMph: 6, stopAhead: null }, 1); // pull away
+    expect(coach.violations.some((v) => v.kind === "stop")).toBe(false);
+  });
+});
+
+describe("DrivingCoach — signals", () => {
+  const turnFrames = 40;
+  const perFrameTurn = -(TURN_THRESHOLD + 0.2) / turnFrames; // sweep left past threshold
+
+  it("flags a turn made without signalling", () => {
+    const coach = new DrivingCoach();
+    let heading = 0;
+    for (let i = 0; i < turnFrames; i += 1) {
+      heading += perFrameTurn;
+      coach.observe({ ...base, heading, signal: null }, 1 / 60);
+    }
+    expect(coach.violations.some((v) => v.kind === "signal")).toBe(true);
+  });
+
+  it("does not flag a turn that was signalled", () => {
+    const coach = new DrivingCoach();
+    let heading = 0;
+    for (let i = 0; i < turnFrames; i += 1) {
+      heading += perFrameTurn;
+      coach.observe({ ...base, heading, signal: "left" }, 1 / 60);
+    }
+    expect(coach.violations.some((v) => v.kind === "signal")).toBe(false);
+  });
+
+  it("does not flag a small lane-change wiggle as a turn", () => {
+    const coach = new DrivingCoach();
+    let heading = 0;
+    for (let i = 0; i < 10; i += 1) {
+      heading += -0.02; // total 0.2 rad, well under threshold
+      coach.observe({ ...base, heading, signal: null }, 1 / 60);
+    }
+    expect(coach.violations.length).toBe(0);
+  });
+});
+
+describe("DrivingCoach — reset", () => {
+  it("restores a clean scorecard", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { overLimit: true }, 200);
+    expect(coach.score).toBeLessThan(100);
+    coach.reset();
+    expect(coach.score).toBe(100);
+    expect(coach.violations.length).toBe(0);
+  });
+});
