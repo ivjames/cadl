@@ -12,6 +12,7 @@ const base: DrivingSample = {
   leadGap: null,
   junction: null,
   crossTraffic: false,
+  crossTrafficAhead: false,
   pedestrianAhead: false,
   parked: false,
 };
@@ -85,6 +86,21 @@ describe("LessonRunner", () => {
     expect(runner.status).toBe("in-progress"); // turn still owed
     driveTurn(runner, "left");
     expect(runner.status).toBe("passed");
+  });
+
+  it("Right of Way passes when the driver waits for cross traffic ahead", () => {
+    const runner = new LessonRunner(lesson("right-of-way"));
+    for (let i = 0; i < 40; i += 1) {
+      runner.observe({ ...base, speedMph: 1, crossTrafficAhead: true }, 1 / 60);
+    }
+    expect(runner.status).toBe("passed");
+  });
+
+  it("Right of Way fails when the driver enters against cross traffic", () => {
+    const runner = new LessonRunner(lesson("right-of-way"));
+    runner.observe({ ...base, junction: null, crossTraffic: true }, 1 / 60); // approaching
+    runner.observe({ ...base, junction: { cx: 0, cz: 0 }, crossTraffic: true }, 1 / 60); // barge in
+    expect(runner.status).toBe("failed");
   });
 
   it("Yield to Pedestrians passes when the driver crawls for a crossing ped", () => {

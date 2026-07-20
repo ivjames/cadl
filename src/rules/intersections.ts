@@ -25,6 +25,23 @@ export function intersectionAt(x: number, z: number): Junction | null {
 }
 
 /**
+ * The junction the car is approaching but not yet inside — found by probing a
+ * point a little ahead along the heading. Returns null when already inside a
+ * junction or none lies just ahead. `probe` is how far ahead to look (m).
+ */
+export function junctionAhead(
+  x: number,
+  z: number,
+  heading: number,
+  probe = ROAD_HALF + 6,
+): Junction | null {
+  if (intersectionAt(x, z)) return null; // already in the box
+  const px = x + Math.sin(heading) * probe;
+  const pz = z + Math.cos(heading) * probe;
+  return intersectionAt(px, pz);
+}
+
+/**
  * Whether a moving traffic car occupies the junction on a path that crosses the
  * player's (perpendicular or oncoming) — i.e. traffic the player must yield to.
  */

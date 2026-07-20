@@ -29,6 +29,8 @@ export interface DrivingSample {
   junction: { cx: number; cz: number } | null;
   /** Whether cross traffic is in that junction (traffic to yield to). */
   crossTraffic: boolean;
+  /** Whether cross traffic occupies the junction the car is approaching. */
+  crossTrafficAhead: boolean;
   /** Whether a pedestrian is in the car's path ahead. */
   pedestrianAhead: boolean;
   /** Whether the car is parked in the active lesson's bay (position + rest). */
@@ -48,7 +50,8 @@ export type AchievementKind =
   | "cleanStop"
   | "signaledTurn"
   | "parked"
-  | "yieldedPedestrian";
+  | "yieldedPedestrian"
+  | "yieldedCrossTraffic";
 
 export interface Violation {
   type: "violation";
@@ -92,6 +95,10 @@ export const FOLLOW_MIN_MPH = 5;
 export const FOLLOW_GRACE_S = 0.6;
 /** Sustained seconds stopped inside a junction before "blocking" registers. */
 export const BLOCK_GRACE_S = 2;
+/** Speed below which waiting for cross traffic ahead counts as yielding (mph). */
+export const CROSS_YIELD_MPH = 3;
+/** Sustained seconds yielding to approaching cross traffic before it's credited. */
+export const CROSS_YIELD_S = 0.4;
 /** Speed above which not yielding to a pedestrian ahead registers. */
 export const PEDESTRIAN_MIN_MPH = 6;
 /** Sustained seconds bearing down on a pedestrian before it registers. */
@@ -128,6 +135,9 @@ export class DrivingCoach {
   private prevJunction: { cx: number; cz: number } | null = null;
   private blockTime = 0;
   private blockFlagged = false;
+  // Positive: sustained time yielding to approaching cross traffic (one-shot).
+  private crossYieldTime = 0;
+  private crossYieldAwarded = false;
 
   // Pedestrian hysteresis.
   private pedTime = 0;
@@ -185,6 +195,8 @@ export class DrivingCoach {
     this.prevJunction = null;
     this.blockTime = 0;
     this.blockFlagged = false;
+    this.crossYieldTime = 0;
+    this.crossYieldAwarded = false;
     this.pedTime = 0;
     this.pedActive = false;
     this.pedYieldTime = 0;
@@ -215,6 +227,7 @@ export class DrivingCoach {
       this.checkSpeeding(sample, dt) ??
       this.checkFollowing(sample, dt) ??
       this.checkIntersection(sample, dt) ??
+      this.checkRightOfWay(sample, dt) ??
       this.checkStops(sample) ??
       this.checkParked(sample, dt) ??
       this.checkSignals(sample, headingDelta, dt)
@@ -340,6 +353,21 @@ export class DrivingCoach {
     } else {
       this.blockTime = 0;
       this.blockFlagged = false;
+    }
+    return null;
+  }
+
+  private checkRightOfWay(sample: DrivingSample, dt: number): CoachEvent | null {
+    if (this.crossYieldAwarded) return null;
+    // Waiting at a crawl for cross traffic in the junction ahead is a proper yield.
+    if (sample.crossTrafficAhead && sample.speedMph <= CROSS_YIELD_MPH) {
+      this.crossYieldTime += dt;
+      if (this.crossYieldTime >= CROSS_YIELD_S) {
+        this.crossYieldAwarded = true;
+        return this.award("yieldedCrossTraffic", "Yielded the right of way");
+      }
+    } else {
+      this.crossYieldTime = 0;
     }
     return null;
   }

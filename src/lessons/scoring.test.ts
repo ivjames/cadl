@@ -17,6 +17,7 @@ const base: DrivingSample = {
   leadGap: null,
   junction: null,
   crossTraffic: false,
+  crossTrafficAhead: false,
   pedestrianAhead: false,
   parked: false,
 };
@@ -124,6 +125,29 @@ describe("DrivingCoach — parking", () => {
     feed(coach, { parked: false }, 10);
     feed(coach, { parked: true }, 60); // back in again
     expect(coach.achievements.filter((a) => a.kind === "parked").length).toBe(1);
+  });
+});
+
+describe("DrivingCoach — right of way", () => {
+  it("credits a yield for waiting at a crawl for cross traffic ahead", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 1, crossTrafficAhead: true }, 60);
+    expect(coach.hasAchievement("yieldedCrossTraffic")).toBe(true);
+    expect(coach.score).toBe(100); // yielding correctly costs nothing
+  });
+
+  it("does not credit a yield while still rolling toward the junction", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 12, crossTrafficAhead: true }, 60);
+    expect(coach.hasAchievement("yieldedCrossTraffic")).toBe(false);
+  });
+
+  it("awards the right-of-way yield only once", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 1, crossTrafficAhead: true }, 60);
+    feed(coach, { speedMph: 12, crossTrafficAhead: false }, 30);
+    feed(coach, { speedMph: 1, crossTrafficAhead: true }, 60);
+    expect(coach.achievements.filter((a) => a.kind === "yieldedCrossTraffic").length).toBe(1);
   });
 });
 
