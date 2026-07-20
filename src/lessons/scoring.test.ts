@@ -18,6 +18,7 @@ const base: DrivingSample = {
   junction: null,
   crossTraffic: false,
   pedestrianAhead: false,
+  parked: false,
 };
 
 function feed(coach: DrivingCoach, sample: Partial<DrivingSample>, frames: number, dt = 1 / 60): void {
@@ -76,6 +77,31 @@ describe("DrivingCoach — pedestrians", () => {
     const coach = new DrivingCoach();
     feed(coach, { speedMph: 3, pedestrianAhead: true }, 60);
     expect(coach.violations.some((v) => v.kind === "pedestrian")).toBe(false);
+  });
+});
+
+describe("DrivingCoach — parking", () => {
+  it("awards a park after the car holds still in the bay", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 0, parked: true }, 60);
+    expect(coach.hasAchievement("parked")).toBe(true);
+  });
+
+  it("does not award a park before the hold time elapses", () => {
+    const coach = new DrivingCoach();
+    coach.observe({ ...base, speedMph: 0, parked: true }, 0.1);
+    expect(coach.hasAchievement("parked")).toBe(false);
+  });
+
+  it("resets the hold if the car leaves the bay, and awards only once", () => {
+    const coach = new DrivingCoach();
+    coach.observe({ ...base, parked: true }, 0.3);
+    coach.observe({ ...base, parked: false }, 0.3); // slipped out, restart
+    expect(coach.hasAchievement("parked")).toBe(false);
+    feed(coach, { parked: true }, 60);
+    feed(coach, { parked: false }, 10);
+    feed(coach, { parked: true }, 60); // back in again
+    expect(coach.achievements.filter((a) => a.kind === "parked").length).toBe(1);
   });
 });
 

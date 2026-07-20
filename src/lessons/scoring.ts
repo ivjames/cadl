@@ -31,6 +31,8 @@ export interface DrivingSample {
   crossTraffic: boolean;
   /** Whether a pedestrian is in the car's path ahead. */
   pedestrianAhead: boolean;
+  /** Whether the car is parked in the active lesson's bay (position + rest). */
+  parked: boolean;
 }
 
 export type ViolationKind =
@@ -42,7 +44,7 @@ export type ViolationKind =
   | "block"
   | "pedestrian";
 /** Positive things a lesson can require the driver to do. */
-export type AchievementKind = "cleanStop" | "signaledTurn";
+export type AchievementKind = "cleanStop" | "signaledTurn" | "parked";
 
 export interface Violation {
   type: "violation";
@@ -90,6 +92,8 @@ export const BLOCK_GRACE_S = 2;
 export const PEDESTRIAN_MIN_MPH = 6;
 /** Sustained seconds bearing down on a pedestrian before it registers. */
 export const PEDESTRIAN_GRACE_S = 0.4;
+/** Sustained seconds held inside the bay at rest before a park is awarded. */
+export const PARK_HOLD_S = 0.5;
 /** Heading swept (radians) before a manoeuvre counts as a turn. */
 export const TURN_THRESHOLD = 0.7;
 /** Per-frame heading change below which the car isn't turning this frame. */
@@ -120,6 +124,10 @@ export class DrivingCoach {
   // Pedestrian hysteresis.
   private pedTime = 0;
   private pedActive = false;
+
+  // Parking: sustained time held inside the bay at rest, and a one-shot latch.
+  private parkTime = 0;
+  private parkedAwarded = false;
 
   // Stop tracking: min speed + closest distance seen while approaching a control.
   private approachName: string | null = null;
@@ -168,6 +176,8 @@ export class DrivingCoach {
     this.blockFlagged = false;
     this.pedTime = 0;
     this.pedActive = false;
+    this.parkTime = 0;
+    this.parkedAwarded = false;
     this.approachName = null;
     this.approachMinMph = Infinity;
     this.approachLastDistance = Infinity;
@@ -193,8 +203,23 @@ export class DrivingCoach {
       this.checkFollowing(sample, dt) ??
       this.checkIntersection(sample, dt) ??
       this.checkStops(sample) ??
+      this.checkParked(sample, dt) ??
       this.checkSignals(sample, headingDelta, dt)
     );
+  }
+
+  private checkParked(sample: DrivingSample, dt: number): CoachEvent | null {
+    if (this.parkedAwarded) return null;
+    if (sample.parked) {
+      this.parkTime += dt;
+      if (this.parkTime >= PARK_HOLD_S) {
+        this.parkedAwarded = true;
+        return this.award("parked", "Parked inside the bay");
+      }
+    } else {
+      this.parkTime = 0;
+    }
+    return null;
   }
 
   private checkPedestrian(sample: DrivingSample, dt: number): CoachEvent | null {

@@ -13,6 +13,7 @@ const base: DrivingSample = {
   junction: null,
   crossTraffic: false,
   pedestrianAhead: false,
+  parked: false,
 };
 
 const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;
@@ -84,6 +85,17 @@ describe("LessonRunner", () => {
     expect(runner.status).toBe("in-progress"); // turn still owed
     driveTurn(runner, "left");
     expect(runner.status).toBe("passed");
+  });
+
+  it("Reverse & Park passes once the car rests in the bay", () => {
+    const runner = new LessonRunner(lesson("parking"));
+    // Not yet parked while still rolling toward the bay.
+    for (let i = 0; i < 5; i += 1) runner.observe({ ...base, speedMph: 4, parked: false }, 1 / 60);
+    expect(runner.status).toBe("in-progress");
+    // Come to rest inside the bay and hold it.
+    for (let i = 0; i < 40; i += 1) runner.observe({ ...base, speedMph: 0, parked: true }, 1 / 60);
+    expect(runner.status).toBe("passed");
+    expect(runner.objectives[0]!.done).toBe(true);
   });
 
   it("reset returns the lesson to in-progress", () => {
