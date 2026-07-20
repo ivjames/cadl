@@ -60,6 +60,10 @@ export function resolveMovement(
   rects: readonly Rect[],
   radius = CAR_RADIUS,
 ): Move {
+  // If we're already overlapping something (e.g. a car drove onto us), don't
+  // trap — allow the move so the driver can pull free instead of locking up.
+  if (isBlocked(px, pz, rects, radius)) return { x: nx, z: nz, hit: false };
+
   let x = px;
   let z = pz;
   let hit = false;

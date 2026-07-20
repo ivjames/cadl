@@ -9,7 +9,7 @@
  * player. Heading convention matches driving.ts: forward = (sin h, cos h).
  */
 
-import { LANE, wrapWorld } from "../rules/roadGrid";
+import { LANE, LINE_OFFSET, ROAD_HALF, ROADS, wrapWorld } from "../rules/roadGrid";
 import { angleDifference } from "../rules/stopControls";
 
 export interface TrafficCar {
@@ -18,6 +18,10 @@ export interface TrafficCar {
   z: number;
   heading: number;
   speed: number;
+  /** Key of the last intersection whose stop this car has cleared. */
+  clearedKey?: string | null;
+  /** Seconds waited at the current stop line. */
+  waited?: number;
 }
 
 export interface Pose {
@@ -32,6 +36,8 @@ const DECEL = 14;
 const CONE_HALF = 3.2; // lateral tolerance for "ahead of me"
 const SAFE_GAP = 8; // start slowing within this
 const STOP_GAP = 3.5; // fully stopped by this
+const LINE_DECEL = 13; // start braking for a stop line within this
+const STOP_WAIT = 0.7; // seconds to sit at a stop line before proceeding
 
 /** Deterministic starting fleet spread across several lanes and directions. */
 export function createTraffic(): TrafficCar[] {
@@ -51,7 +57,56 @@ export function createTraffic(): TrafficCar[] {
     { x: 150, z: -120 + LANE, heading: -Math.PI / 2 }, // westbound, z=-120 road
     { x: -30, z: 120 - LANE, heading: Math.PI / 2 }, // eastbound, z=120 road
   ];
-  return specs.map((s, id) => ({ id, speed: TRAFFIC_SPEED, ...s }));
+  return specs.map((s, id) => ({ id, speed: TRAFFIC_SPEED, clearedKey: null, waited: 0, ...s }));
+}
+
+const nearestRoad = (v: number): number =>
+  ROADS.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+
+interface NextStop {
+  key: string;
+  distance: number;
+  cx: number;
+  cz: number;
+}
+
+/** The next stop line ahead of the car on its lane, or null (none in range). */
+function nextStopAhead(car: TrafficCar): NextStop | null {
+  const alongZ = Math.abs(Math.cos(car.heading)) > 0.5; // N/S travel
+  let best: NextStop | null = null;
+  if (alongZ) {
+    const rx = nearestRoad(car.x);
+    const dir = Math.cos(car.heading) > 0 ? 1 : -1;
+    for (const cz of ROADS) {
+      const dist = (cz - dir * LINE_OFFSET - car.z) * dir;
+      if (dist > 0 && (best === null || dist < best.distance)) {
+        best = { key: `${rx}:${cz}`, distance: dist, cx: rx, cz };
+      }
+    }
+  } else {
+    const rz = nearestRoad(car.z);
+    const dir = Math.sin(car.heading) > 0 ? 1 : -1;
+    for (const cx of ROADS) {
+      const dist = (cx - dir * LINE_OFFSET - car.x) * dir;
+      if (dist > 0 && (best === null || dist < best.distance)) {
+        best = { key: `${cx}:${rz}`, distance: dist, cx, cz: rz };
+      }
+    }
+  }
+  return best;
+}
+
+/** Whether another car currently occupies the junction box (right-of-way). */
+function occupied(cars: readonly TrafficCar[], cx: number, cz: number, selfId: number): boolean {
+  return cars.some(
+    (c) => c.id !== selfId && Math.abs(c.x - cx) <= ROAD_HALF && Math.abs(c.z - cz) <= ROAD_HALF,
+  );
+}
+
+function speedFromGap(gap: number): number {
+  if (gap < STOP_GAP) return 0;
+  if (gap < SAFE_GAP) return TRAFFIC_SPEED * ((gap - STOP_GAP) / (SAFE_GAP - STOP_GAP));
+  return TRAFFIC_SPEED;
 }
 
 function approach(current: number, target: number, up: number, down: number): number {
@@ -88,15 +143,33 @@ export function stepTraffic(
   player: Pose | null = null,
 ): TrafficCar[] {
   return cars.map((car) => {
-    const gap = gapAhead(car, cars, player);
-    let target = TRAFFIC_SPEED;
-    if (gap < STOP_GAP) target = 0;
-    else if (gap < SAFE_GAP) target = TRAFFIC_SPEED * ((gap - STOP_GAP) / (SAFE_GAP - STOP_GAP));
+    // Yield to whatever's ahead (leaders, cross traffic, the player).
+    let target = speedFromGap(gapAhead(car, cars, player));
+
+    // Obey stop signs: brake for the next uncleared line, wait, then proceed
+    // once the intersection is clear (right-of-way for whoever's already in it).
+    let clearedKey = car.clearedKey ?? null;
+    let waited = car.waited ?? 0;
+    const stop = nextStopAhead(car);
+    if (stop && stop.key !== clearedKey) {
+      const d = stop.distance;
+      const stopTarget = d < 0.6 ? 0 : d < LINE_DECEL ? TRAFFIC_SPEED * (d / LINE_DECEL) : TRAFFIC_SPEED;
+      target = Math.min(target, stopTarget);
+      if (d < 1.5 && car.speed < 0.5) {
+        waited += dt;
+        if (waited >= STOP_WAIT && !occupied(cars, stop.cx, stop.cz, car.id)) {
+          clearedKey = stop.key;
+          waited = 0;
+        }
+      }
+    } else {
+      waited = 0;
+    }
 
     const speed = approach(car.speed, target, ACCEL * dt, DECEL * dt);
     const x = wrapWorld(car.x + Math.sin(car.heading) * speed * dt);
     const z = wrapWorld(car.z + Math.cos(car.heading) * speed * dt);
-    return { ...car, speed, x, z };
+    return { ...car, speed, x, z, clearedKey, waited };
   });
 }
 

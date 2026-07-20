@@ -37,6 +37,16 @@ describe("traffic sim", () => {
     expect(cars[0]!.z).toBeLessThan(0); // stayed behind the player
   });
 
+  it("stops at a stop line and holds", () => {
+    // Northbound on the x=0 road, approaching the z=60 intersection.
+    let cars: TrafficCar[] = [{ id: 0, x: 2.75, z: 40, heading: 0, speed: TRAFFIC_SPEED }];
+    for (let i = 0; i < 240; i += 1) cars = stepTraffic(cars, 1 / 60);
+    const car = cars[0]!;
+    // It should have braked to a near-stop just short of the line (z ≈ 60 − 6.1).
+    expect(car.speed).toBeLessThan(2);
+    expect(car.z).toBeLessThan(60 - 6.1 + 1);
+  });
+
   it("wraps around the world edge", () => {
     // Start near the +z edge and drive past it; it should reappear at -z.
     let cars: TrafficCar[] = [{ id: 0, x: 2.75, z: 305, heading: 0, speed: TRAFFIC_SPEED }];
