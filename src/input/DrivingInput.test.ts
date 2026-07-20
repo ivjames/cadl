@@ -11,6 +11,7 @@ describe("DrivingInput", () => {
     const input = new DrivingInput();
     input.press("gas", true);
     input.press("right", true);
+    input.update(1); // one big tick eases the pedal fully in
     expect(input.read()).toEqual({ gas: 1, brake: 0, steer: 1, reverse: false });
   });
 
@@ -18,7 +19,30 @@ describe("DrivingInput", () => {
     const input = new DrivingInput();
     input.press("gas", true);
     input.press("left", true);
+    input.update(1);
     expect(input.read()).toEqual({ gas: 1, brake: 0, steer: -1, reverse: false });
+  });
+
+  it("eases the throttle in progressively rather than snapping to full", () => {
+    const input = new DrivingInput();
+    input.press("gas", true);
+    input.update(1 / 60);
+    const first = input.read().gas;
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThan(1); // not full after a single frame
+    for (let i = 0; i < 60; i += 1) input.update(1 / 60);
+    expect(input.read().gas).toBeCloseTo(1, 5); // reaches full when held
+  });
+
+  it("eases the throttle back toward zero when released", () => {
+    const input = new DrivingInput();
+    input.press("gas", true);
+    input.update(1);
+    input.press("gas", false);
+    input.update(1 / 60);
+    const g = input.read().gas;
+    expect(g).toBeLessThan(1);
+    expect(g).toBeGreaterThan(0); // still easing down, not instantly zero
   });
 
   it("cancels opposing steer inputs to zero", () => {

@@ -14,8 +14,7 @@ export function setupSteeringWheel(input: DrivingInput): void {
   if (!wheel) return;
 
   let dragging = false;
-  let startPointerAngle = 0;
-  let startRotation = 0;
+  let lastPointerAngle = 0;
   let rotation = 0;
 
   const centre = (): { x: number; y: number } => {
@@ -41,16 +40,21 @@ export function setupSteeringWheel(input: DrivingInput): void {
     }
     wheel.style.transition = "none";
     wheel.classList.add("is-pressed");
-    startPointerAngle = pointerAngle(event);
-    startRotation = rotation;
+    lastPointerAngle = pointerAngle(event);
   });
 
   wheel.addEventListener("pointermove", (event) => {
     if (!dragging) return;
-    let delta = pointerAngle(event) - startPointerAngle;
-    while (delta > Math.PI) delta -= 2 * Math.PI;
-    while (delta < -Math.PI) delta += 2 * Math.PI;
-    rotation = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, startRotation + delta));
+    // Accumulate the *incremental* angle since the last move, not the total
+    // since grab. Per-move steps are tiny, so they never hit the ±π wrap that
+    // made a hard oversteer snap the wheel to the opposite lock. Past full lock
+    // the rotation just clamps and reversing immediately unwinds it.
+    const current = pointerAngle(event);
+    let step = current - lastPointerAngle;
+    if (step > Math.PI) step -= 2 * Math.PI;
+    if (step < -Math.PI) step += 2 * Math.PI;
+    lastPointerAngle = current;
+    rotation = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, rotation + step));
     apply();
   });
 
