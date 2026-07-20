@@ -87,7 +87,23 @@ describe("LessonRunner", () => {
     expect(runner.status).toBe("passed");
   });
 
-  it("Reverse & Park passes once the car rests in the bay", () => {
+  it("Yield to Pedestrians passes when the driver crawls for a crossing ped", () => {
+    const runner = new LessonRunner(lesson("crosswalk"));
+    for (let i = 0; i < 40; i += 1) {
+      runner.observe({ ...base, speedMph: 1, pedestrianAhead: true }, 1 / 60);
+    }
+    expect(runner.status).toBe("passed");
+  });
+
+  it("Yield to Pedestrians fails if the driver bears down on the ped", () => {
+    const runner = new LessonRunner(lesson("crosswalk"));
+    for (let i = 0; i < 40; i += 1) {
+      runner.observe({ ...base, speedMph: 15, pedestrianAhead: true }, 1 / 60);
+    }
+    expect(runner.status).toBe("failed");
+  });
+
+  it("Pull In & Park passes once the car rests in the bay", () => {
     const runner = new LessonRunner(lesson("parking"));
     // Not yet parked while still rolling toward the bay.
     for (let i = 0; i < 5; i += 1) runner.observe({ ...base, speedMph: 4, parked: false }, 1 / 60);

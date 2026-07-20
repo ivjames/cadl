@@ -78,6 +78,28 @@ describe("DrivingCoach — pedestrians", () => {
     feed(coach, { speedMph: 3, pedestrianAhead: true }, 60);
     expect(coach.violations.some((v) => v.kind === "pedestrian")).toBe(false);
   });
+
+  it("credits a yield when crawling for a pedestrian ahead", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 1, pedestrianAhead: true }, 60);
+    expect(coach.hasAchievement("yieldedPedestrian")).toBe(true);
+    // No penalty for yielding correctly.
+    expect(coach.score).toBe(100);
+  });
+
+  it("awards the pedestrian yield only once", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 1, pedestrianAhead: true }, 60);
+    feed(coach, { speedMph: 20, pedestrianAhead: false }, 30);
+    feed(coach, { speedMph: 1, pedestrianAhead: true }, 60);
+    expect(coach.achievements.filter((a) => a.kind === "yieldedPedestrian").length).toBe(1);
+  });
+
+  it("does not credit a yield while still moving fast at the pedestrian", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 15, pedestrianAhead: true }, 30);
+    expect(coach.hasAchievement("yieldedPedestrian")).toBe(false);
+  });
 });
 
 describe("DrivingCoach — parking", () => {
