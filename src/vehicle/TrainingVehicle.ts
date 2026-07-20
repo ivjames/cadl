@@ -6,6 +6,7 @@ import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import type { Scene } from "@babylonjs/core/scene";
 import {
+  DRIVING,
   type CarState,
   type DriveInput,
   spawnState,
@@ -31,6 +32,10 @@ export class TrainingVehicle {
   private readonly blinkerRightMat: StandardMaterial;
   private readonly amberOn = new Color3(1, 0.62, 0);
   private readonly amberOff = new Color3(0.32, 0.2, 0.03);
+  // White reverse lamps, lit only while backing up.
+  private readonly reverseLampMat: StandardMaterial;
+  private readonly reverseOn = new Color3(0.85, 0.85, 0.8);
+  private readonly reverseOff = new Color3(0.05, 0.05, 0.05);
 
   constructor(scene: Scene) {
     this.root = new Mesh("vehicleRoot", scene);
@@ -39,6 +44,10 @@ export class TrainingVehicle {
     this.blinkerLeftMat.diffuseColor = this.amberOff.clone();
     this.blinkerRightMat = new StandardMaterial("blinkerRight", scene);
     this.blinkerRightMat.diffuseColor = this.amberOff.clone();
+
+    this.reverseLampMat = new StandardMaterial("reverseLamp", scene);
+    this.reverseLampMat.diffuseColor = new Color3(0.9, 0.9, 0.85);
+    this.reverseLampMat.emissiveColor = this.reverseOff.clone();
 
     const paint = new StandardMaterial("carPaint", scene);
     paint.diffuseColor = new Color3(0.06, 0.35, 0.65);
@@ -116,6 +125,17 @@ export class TrainingVehicle {
       light.parent = this.root;
     }
 
+    for (const rx of [-0.35, 0.35]) {
+      const lamp = CreateBox(
+        `carReverseLamp-${rx}`,
+        { width: 0.22, height: 0.16, depth: 0.1 },
+        scene,
+      );
+      lamp.material = this.reverseLampMat;
+      lamp.position.set(rx, 0.6, -2.0);
+      lamp.parent = this.root;
+    }
+
     // Amber blinkers at all four corners (front z=+, rear z=-; left x=-, right x=+).
     const blinkerSpecs: Array<[string, number, number, StandardMaterial]> = [
       ["blinkFL", -0.85, 1.95, this.blinkerLeftMat],
@@ -137,6 +157,11 @@ export class TrainingVehicle {
   setBlinkers(side: "left" | "right" | null, on: boolean): void {
     this.blinkerLeftMat.emissiveColor = side === "left" && on ? this.amberOn : this.amberOff;
     this.blinkerRightMat.emissiveColor = side === "right" && on ? this.amberOn : this.amberOff;
+  }
+
+  /** Light the white reverse lamps while the car is actually backing up. */
+  private setReverseLamp(on: boolean): void {
+    this.reverseLampMat.emissiveColor = on ? this.reverseOn : this.reverseOff;
   }
 
   /** Position, heading, and speed for the HUD and rule checks. */
@@ -162,6 +187,7 @@ export class TrainingVehicle {
     const x = wrapWorld(moved.x);
     const z = wrapWorld(moved.z);
     this.state = { ...next, x, z, speed: moved.hit ? next.speed * 0.25 : next.speed };
+    this.setReverseLamp(this.state.speed < -DRIVING.stopEpsilon);
     this.syncTransform();
   }
 
@@ -169,6 +195,7 @@ export class TrainingVehicle {
   reset(): void {
     this.state = spawnState();
     this.setBlinkers(null, false);
+    this.setReverseLamp(false);
     this.syncTransform();
   }
 
