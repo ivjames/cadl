@@ -12,6 +12,7 @@ import "./style.css";
 import { DrivingInput } from "./input/DrivingInput";
 import { createEnvironment } from "./scene/createEnvironment";
 import { setupTouchControls } from "./ui/TouchControls";
+import { setupSteeringWheel } from "./ui/SteeringWheel";
 import { TrainingVehicle } from "./vehicle/TrainingVehicle";
 import {
   type SignalDirection,
@@ -106,6 +107,7 @@ setupTouchControls(input, {
   onSignalLeft: () => toggleSignal("left"),
   onSignalRight: () => toggleSignal("right"),
 });
+setupSteeringWheel(input);
 
 // HUD element handles.
 const speedElement = document.querySelector<HTMLElement>("#speed");

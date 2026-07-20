@@ -8,7 +8,8 @@ import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { Scene } from "@babylonjs/core/scene";
-import { LANE, LINE_OFFSET, ROAD_HALF, ROADS, WORLD, approachesAt, intersections } from "../rules/roadGrid";
+import { LANE, ROAD_HALF, ROADS, WORLD, approachesAt, intersections } from "../rules/roadGrid";
+import { BUILDING_D, BUILDING_W, blockCentres } from "../rules/obstacles";
 
 type SignPainter = (ctx: CanvasRenderingContext2D, size: number) => void;
 
@@ -228,12 +229,13 @@ export function createEnvironment(scene: Scene): void {
   stdSign(9, -ROAD_HALF - 1, Math.PI / 2, schoolMat); // school zone, east arm
   stdSign(42, ROAD_HALF + 1, -Math.PI / 2, schoolMat);
 
-  // --- Buildings + trees, one cluster per city block ---
-  const mids = ROADS.slice(0, -1).map((v, i) => (v + ROADS[i + 1]!) / 2);
+  // --- Buildings + trees, one cluster per city block (footprints match the
+  // collision rects in rules/obstacles.ts, which use the same block centres). ---
+  const mids = blockCentres();
   mids.forEach((bx, ix) => {
     mids.forEach((bz, iz) => {
       const height = 7 + ((ix * 3 + iz * 5) % 12);
-      buildings.push(box(scene, 22, height, 20, bx, height / 2, bz));
+      buildings.push(box(scene, BUILDING_W, height, BUILDING_D, bx, height / 2, bz));
       // A couple of trees near the block's road-facing corner.
       const treeSpots: Array<[number, number]> = [
         [bx - 16, bz - 16],
