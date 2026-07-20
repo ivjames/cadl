@@ -9,6 +9,7 @@ const base: DrivingSample = {
   overLimit: false,
   signal: null,
   stopAhead: null,
+  leadGap: null,
 };
 
 const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;

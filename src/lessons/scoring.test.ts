@@ -14,6 +14,7 @@ const base: DrivingSample = {
   overLimit: false,
   signal: null,
   stopAhead: null,
+  leadGap: null,
 };
 
 function feed(coach: DrivingCoach, sample: Partial<DrivingSample>, frames: number, dt = 1 / 60): void {
@@ -37,6 +38,27 @@ describe("DrivingCoach — speeding", () => {
     feed(coach, { overLimit: false }, 10); // back under
     feed(coach, { overLimit: true }, 200); // over again
     expect(coach.violations.length).toBe(2);
+  });
+});
+
+describe("DrivingCoach — following distance", () => {
+  it("flags sustained tailgating of a close lead car", () => {
+    const coach = new DrivingCoach();
+    // 30 mph ≈ 13.4 m/s; a 10 m gap is well under the 2 s rule (~27 m).
+    feed(coach, { speedMph: 30, leadGap: 10 }, 120);
+    expect(coach.violations.some((v) => v.kind === "follow")).toBe(true);
+  });
+
+  it("does not flag a safe gap", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 30, leadGap: 40 }, 120); // ~3 s gap
+    expect(coach.violations.some((v) => v.kind === "follow")).toBe(false);
+  });
+
+  it("does not flag when nearly stopped", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 3, leadGap: 4 }, 120);
+    expect(coach.violations.some((v) => v.kind === "follow")).toBe(false);
   });
 });
 

@@ -23,9 +23,11 @@ export interface DrivingSample {
   signal: SignalDirection | null;
   /** Nearest stop control ahead, or null (from stopSignAhead). */
   stopAhead: StopAhead | null;
+  /** Centre-to-centre distance to the lead car ahead (m), or null if clear. */
+  leadGap: number | null;
 }
 
-export type ViolationKind = "stop" | "speed" | "signal";
+export type ViolationKind = "stop" | "speed" | "signal" | "follow";
 /** Positive things a lesson can require the driver to do. */
 export type AchievementKind = "cleanStop" | "signaledTurn";
 
@@ -48,6 +50,7 @@ export const PENALTIES: Record<ViolationKind, number> = {
   stop: 15,
   speed: 10,
   signal: 10,
+  follow: 8,
 };
 
 /** Speed (mph) below which the car counts as fully stopped. */
@@ -59,6 +62,12 @@ export const STOP_ZONE_M = 12;
 export const STOP_CROSS_M = 3;
 /** Sustained seconds over the limit before a speeding violation registers. */
 export const SPEEDING_GRACE_S = 0.75;
+/** The "3-second rule", relaxed a little for arcade play. */
+export const FOLLOW_TIME_GAP_S = 2;
+/** Speed below which following distance isn't judged. */
+export const FOLLOW_MIN_MPH = 5;
+/** Sustained seconds tailgating before it registers. */
+export const FOLLOW_GRACE_S = 0.6;
 /** Heading swept (radians) before a manoeuvre counts as a turn. */
 export const TURN_THRESHOLD = 0.7;
 /** Per-frame heading change below which the car isn't turning this frame. */
@@ -76,6 +85,10 @@ export class DrivingCoach {
   // Speeding hysteresis.
   private overLimitTime = 0;
   private speedingActive = false;
+
+  // Following-distance hysteresis.
+  private followTime = 0;
+  private followingActive = false;
 
   // Stop tracking: min speed + closest distance seen while approaching a control.
   private approachName: string | null = null;
@@ -117,6 +130,8 @@ export class DrivingCoach {
     this.log.length = 0;
     this.overLimitTime = 0;
     this.speedingActive = false;
+    this.followTime = 0;
+    this.followingActive = false;
     this.approachName = null;
     this.approachMinMph = Infinity;
     this.approachLastDistance = Infinity;
@@ -138,6 +153,7 @@ export class DrivingCoach {
 
     return (
       this.checkSpeeding(sample, dt) ??
+      this.checkFollowing(sample, dt) ??
       this.checkStops(sample) ??
       this.checkSignals(sample, headingDelta, dt)
     );
@@ -166,6 +182,25 @@ export class DrivingCoach {
     } else {
       this.overLimitTime = 0;
       this.speedingActive = false;
+    }
+    return null;
+  }
+
+  private checkFollowing(sample: DrivingSample, dt: number): CoachEvent | null {
+    const mps = sample.speedMph / 2.23694;
+    const tailgating =
+      sample.leadGap !== null &&
+      sample.speedMph > FOLLOW_MIN_MPH &&
+      sample.leadGap / mps < FOLLOW_TIME_GAP_S;
+    if (tailgating) {
+      this.followTime += dt;
+      if (!this.followingActive && this.followTime >= FOLLOW_GRACE_S) {
+        this.followingActive = true;
+        return this.emit("follow", "Following too closely");
+      }
+    } else {
+      this.followTime = 0;
+      this.followingActive = false;
     }
     return null;
   }

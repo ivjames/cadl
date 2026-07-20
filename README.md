@@ -47,6 +47,10 @@ The HUD shows speed, gear (D/N/R), the posted speed limit (turns red over the
 limit), the current zone (e.g. School Zone), a blinking turn-signal indicator,
 and a "STOP AHEAD" cue when approaching a stop sign.
 
+Ambient AI traffic drives the grid (yields to leaders, cross traffic, and you);
+the car collides with it, and the coach flags following too closely (2-second
+rule).
+
 ## Architecture
 
 ```text
@@ -63,6 +67,8 @@ src/
   lessons/scoring.ts          pure driving coach: grades violations + achievements
   lessons/lessons.ts          data-driven California lesson definitions
   lessons/LessonRunner.ts     runs a lesson over the coach; tracks objectives + pass/fail
+  traffic/traffic.ts          pure ambient-traffic sim (cruise, yield, wrap)
+  scene/TrafficView.ts        renders the traffic cars from the sim state
   scene/createEnvironment.ts  roads, markings, curbs, sidewalks, scenery, traffic signs
   ui/TouchControls.ts         pointer-event wiring for the pedals + buttons
   ui/SteeringWheel.ts         draggable analog steering wheel
