@@ -39,6 +39,12 @@ describe("obstacles", () => {
     expect(m.hit).toBe(true);
   });
 
+  it("lets the car drive out when already overlapping (no lock-up)", () => {
+    // Centre sits inside the wall (a car drove onto us) — the move must go through.
+    const m = resolveMovement(0, 0, 3, 0, wall);
+    expect(m).toMatchObject({ x: 3, z: 0, hit: false });
+  });
+
   it("does not constrain the world edge (the caller wraps)", () => {
     const m = resolveMovement(160, 0, 400, 0, []);
     expect(m).toMatchObject({ x: 400, z: 0, hit: false });

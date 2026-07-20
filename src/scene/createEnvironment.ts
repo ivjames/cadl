@@ -207,9 +207,11 @@ export function createEnvironment(scene: Scene): void {
       } else {
         lines.push(box(scene, 0.5, 0.04, ROAD_HALF, a.x, 0.1, a.z));
       }
-      // Stop sign on the right, just outside the line, facing the approach.
-      const sx = a.x + Math.sin(a.heading + Math.PI / 2) * 0.9;
-      const sz = a.z + Math.cos(a.heading + Math.PI / 2) * 0.9;
+      // Stop sign on the right, out past the road edge (on the sidewalk),
+      // facing the approach. Offset from the lane centre to just beyond the curb.
+      const side = ROAD_HALF - LANE + 1.1;
+      const sx = a.x + Math.sin(a.heading + Math.PI / 2) * side;
+      const sz = a.z + Math.cos(a.heading + Math.PI / 2) * side;
       posts.push(CreateCylinder("post", { diameter: 0.14, height: 2.3, tessellation: 6 }, scene));
       posts[posts.length - 1]!.position.set(sx, 1.15, sz);
       stopSigns.push(signPanel(scene, sx, sz, a.heading));
