@@ -1,11 +1,10 @@
-import {
-  Color3,
-  Mesh,
-  MeshBuilder,
-  Scene,
-  StandardMaterial,
-  Vector3,
-} from "@babylonjs/core";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import type { Scene } from "@babylonjs/core/scene";
 import {
   type CarState,
   type DriveInput,
@@ -45,7 +44,7 @@ export class TrainingVehicle {
     taillight.emissiveColor = new Color3(0.35, 0.02, 0.02);
 
     // Front of the car is +Z (the forward heading direction).
-    const body = MeshBuilder.CreateBox(
+    const body = CreateBox(
       "carBody",
       { width: 1.8, height: 0.6, depth: 4.0 },
       scene,
@@ -54,7 +53,7 @@ export class TrainingVehicle {
     body.position.y = 0.55;
     body.parent = this.root;
 
-    const cabin = MeshBuilder.CreateBox(
+    const cabin = CreateBox(
       "carCabin",
       { width: 1.5, height: 0.6, depth: 2.0 },
       scene,
@@ -70,7 +69,7 @@ export class TrainingVehicle {
       [-0.95, -1.3],
     ];
     for (const [wx, wz] of wheelPositions) {
-      const wheel = MeshBuilder.CreateCylinder(
+      const wheel = CreateCylinder(
         `carWheel-${wx}-${wz}`,
         { diameter: 0.7, height: 0.3, tessellation: 16 },
         scene,
@@ -82,7 +81,7 @@ export class TrainingVehicle {
     }
 
     for (const hx of [-0.6, 0.6]) {
-      const light = MeshBuilder.CreateBox(
+      const light = CreateBox(
         `carHeadlight-${hx}`,
         { width: 0.35, height: 0.2, depth: 0.1 },
         scene,
@@ -93,7 +92,7 @@ export class TrainingVehicle {
     }
 
     for (const tx of [-0.7, 0.7]) {
-      const light = MeshBuilder.CreateBox(
+      const light = CreateBox(
         `carTaillight-${tx}`,
         { width: 0.3, height: 0.2, depth: 0.1 },
         scene,

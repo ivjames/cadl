@@ -13,11 +13,12 @@ export default defineConfig({
     chunkSizeWarningLimit: 8000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Pin the engine to its own long-lived chunk: app-code edits then keep
-          // the same hash, so a returning iPad reuses the cached Babylon file
-          // instead of re-downloading ~1.5 MB (gzipped) every deploy.
-          babylon: ["@babylonjs/core"],
+        // Pin the engine to its own long-lived chunk: app-code edits then keep
+        // the same hash, so a returning iPad reuses the cached Babylon file
+        // instead of re-downloading it every deploy. Function form matches the
+        // deep-import module paths (e.g. @babylonjs/core/Engines/engine).
+        manualChunks(id) {
+          if (id.includes("node_modules/@babylonjs")) return "babylon";
         },
       },
     },

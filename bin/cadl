@@ -26,11 +26,23 @@ port() {
 
 deploy() {
   cd "$DIR"
+  local before after
+  before="$(git rev-parse HEAD 2>/dev/null || true)"
   log "fetching origin/$BRANCH"
   git fetch --quiet origin "$BRANCH"
   git reset --hard "origin/$BRANCH"
-  log "installing dependencies"
-  npm ci
+  after="$(git rev-parse HEAD)"
+
+  # npm ci wipes and rebuilds node_modules — the slowest step, and pure waste
+  # when deps are unchanged. Only reinstall when node_modules is missing or the
+  # lockfile actually moved between the old and new commit.
+  if [ ! -d node_modules ] || ! git diff --quiet "$before" "$after" -- package-lock.json 2>/dev/null; then
+    log "dependencies changed -> npm ci"
+    npm ci
+  else
+    log "dependencies unchanged -> skipping npm ci"
+  fi
+
   log "building dist/"
   npm run build
   restart
