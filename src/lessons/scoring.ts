@@ -51,7 +51,8 @@ export type AchievementKind =
   | "signaledTurn"
   | "parked"
   | "yieldedPedestrian"
-  | "yieldedCrossTraffic";
+  | "yieldedCrossTraffic"
+  | "keptDistance";
 
 export interface Violation {
   type: "violation";
@@ -93,6 +94,12 @@ export const FOLLOW_TIME_GAP_S = 2;
 export const FOLLOW_MIN_MPH = 5;
 /** Sustained seconds tailgating before it registers. */
 export const FOLLOW_GRACE_S = 0.6;
+/** Minimum speed (mph) at which following distance is credited. */
+export const FOLLOW_KEEP_MIN_MPH = 8;
+/** Time gap (s) at or above which the following distance is considered safe. */
+export const FOLLOW_KEEP_GAP_S = 2.5;
+/** Sustained seconds tracking a lead car at a safe gap before it's credited. */
+export const FOLLOW_KEEP_S = 3;
 /** Sustained seconds stopped inside a junction before "blocking" registers. */
 export const BLOCK_GRACE_S = 2;
 /** Speed below which waiting for cross traffic ahead counts as yielding (mph). */
@@ -130,6 +137,9 @@ export class DrivingCoach {
   // Following-distance hysteresis.
   private followTime = 0;
   private followingActive = false;
+  // Positive: sustained time tracking a lead car at a safe gap (one-shot).
+  private keepTime = 0;
+  private keepAwarded = false;
 
   // Intersection conduct.
   private prevJunction: { cx: number; cz: number } | null = null;
@@ -192,6 +202,8 @@ export class DrivingCoach {
     this.speedingActive = false;
     this.followTime = 0;
     this.followingActive = false;
+    this.keepTime = 0;
+    this.keepAwarded = false;
     this.prevJunction = null;
     this.blockTime = 0;
     this.blockFlagged = false;
@@ -313,14 +325,31 @@ export class DrivingCoach {
       sample.speedMph > FOLLOW_MIN_MPH &&
       sample.leadGap / mps < FOLLOW_TIME_GAP_S;
     if (tailgating) {
+      this.keepTime = 0; // too close — no credit while tailgating
       this.followTime += dt;
       if (!this.followingActive && this.followTime >= FOLLOW_GRACE_S) {
         this.followingActive = true;
         return this.emit("follow", "Following too closely");
       }
-    } else {
-      this.followTime = 0;
-      this.followingActive = false;
+      return null;
+    }
+
+    this.followTime = 0;
+    this.followingActive = false;
+
+    // Positive: tracking a lead car at a safe gap while moving credits distance.
+    const trackingSafely =
+      sample.leadGap !== null &&
+      sample.speedMph >= FOLLOW_KEEP_MIN_MPH &&
+      sample.leadGap / mps >= FOLLOW_KEEP_GAP_S;
+    if (!this.keepAwarded && trackingSafely) {
+      this.keepTime += dt;
+      if (this.keepTime >= FOLLOW_KEEP_S) {
+        this.keepAwarded = true;
+        return this.award("keptDistance", "Kept a safe following distance");
+      }
+    } else if (!trackingSafely) {
+      this.keepTime = 0;
     }
     return null;
   }

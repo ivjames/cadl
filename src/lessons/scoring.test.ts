@@ -65,6 +65,26 @@ describe("DrivingCoach — following distance", () => {
     feed(coach, { speedMph: 3, leadGap: 4 }, 120);
     expect(coach.violations.some((v) => v.kind === "follow")).toBe(false);
   });
+
+  it("credits a safe following distance after tracking a lead car", () => {
+    const coach = new DrivingCoach();
+    // 20 mph ≈ 8.9 m/s; a 30 m gap is ~3.3 s — safely back.
+    feed(coach, { speedMph: 20, leadGap: 30 }, 200);
+    expect(coach.hasAchievement("keptDistance")).toBe(true);
+    expect(coach.score).toBe(100);
+  });
+
+  it("does not credit distance with no car ahead", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 20, leadGap: null }, 200);
+    expect(coach.hasAchievement("keptDistance")).toBe(false);
+  });
+
+  it("does not credit distance while tailgating", () => {
+    const coach = new DrivingCoach();
+    feed(coach, { speedMph: 30, leadGap: 10 }, 200); // ~0.75 s gap
+    expect(coach.hasAchievement("keptDistance")).toBe(false);
+  });
 });
 
 describe("DrivingCoach — pedestrians", () => {

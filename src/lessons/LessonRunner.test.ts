@@ -88,6 +88,22 @@ describe("LessonRunner", () => {
     expect(runner.status).toBe("passed");
   });
 
+  it("Following Distance passes after holding a safe gap behind a lead car", () => {
+    const runner = new LessonRunner(lesson("following"));
+    for (let i = 0; i < 200; i += 1) {
+      runner.observe({ ...base, speedMph: 20, leadGap: 30 }, 1 / 60);
+    }
+    expect(runner.status).toBe("passed");
+  });
+
+  it("Following Distance fails if the driver tailgates", () => {
+    const runner = new LessonRunner(lesson("following"));
+    for (let i = 0; i < 120; i += 1) {
+      runner.observe({ ...base, speedMph: 30, leadGap: 10 }, 1 / 60);
+    }
+    expect(runner.status).toBe("failed");
+  });
+
   it("Right of Way passes when the driver waits for cross traffic ahead", () => {
     const runner = new LessonRunner(lesson("right-of-way"));
     for (let i = 0; i < 40; i += 1) {
