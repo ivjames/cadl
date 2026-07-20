@@ -2,17 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#111827" />
     <title>CADL Driver Training</title>
   </head>
   <body>
     <canvas id="renderCanvas" aria-label="CADL 3D driving simulator"></canvas>
+
     <div id="hud">
       <strong>CADL</strong>
       <span id="speed">0 mph</span>
-      <span>WASD / arrows · C camera</span>
     </div>
+
+    <div id="topControls" class="control-cluster">
+      <button id="cameraButton" type="button">Camera</button>
+      <button id="resetButton" type="button">Reset</button>
+    </div>
+
+    <div id="steeringControls" class="control-cluster driving-controls" aria-label="Steering controls">
+      <button id="steerLeft" class="drive-button steering" type="button" aria-label="Steer left">◀</button>
+      <button id="steerRight" class="drive-button steering" type="button" aria-label="Steer right">▶</button>
+    </div>
+
+    <div id="pedalControls" class="control-cluster driving-controls" aria-label="Pedal controls">
+      <button id="brakeButton" class="drive-button pedal brake" type="button">BRAKE</button>
+      <button id="gasButton" class="drive-button pedal gas" type="button">GAS</button>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
