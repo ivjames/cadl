@@ -1,15 +1,18 @@
 /**
- * Stop controls at the intersection — pure geometry, no Babylon/DOM.
+ * Stop-control detection — pure geometry, no Babylon/DOM.
  *
- * One stop sign / limit line guards each of the four approaches. `stopSignAhead`
- * tells the HUD (and, later, the scoring layer) whether the car is approaching a
- * stop and how far the limit line is. Lane centres assume right-hand driving.
+ * The controls are generated from the shared road grid (rules/roadGrid.ts), so
+ * every intersection's stop signs, painted lines, and detection agree.
+ * `stopSignAhead` tells the HUD and scoring layer whether the car is approaching
+ * a stop and how far the limit line is. Lane centres assume right-hand driving.
  *
  * Heading convention matches driving.ts: forward = (sin h, cos h).
  */
 
+import { allApproaches } from "./roadGrid";
+
 export interface StopControl {
-  /** Approach label: S/N/E/W arm of the intersection. */
+  /** Approach label. */
   name: string;
   /** Limit-line point at the lane centre (world XZ). */
   x: number;
@@ -18,16 +21,12 @@ export interface StopControl {
   approachHeading: number;
 }
 
-/** ~half road width + a little; limit lines sit just outside the junction box. */
-const LINE_OFFSET = 6.1;
-const LANE = 2.75; // right-lane centre offset from the road centreline
-
-export const STOP_CONTROLS: readonly StopControl[] = [
-  { name: "S", x: LANE, z: -LINE_OFFSET, approachHeading: 0 }, // northbound
-  { name: "N", x: -LANE, z: LINE_OFFSET, approachHeading: Math.PI }, // southbound
-  { name: "W", x: -LINE_OFFSET, z: -LANE, approachHeading: Math.PI / 2 }, // eastbound
-  { name: "E", x: LINE_OFFSET, z: LANE, approachHeading: -Math.PI / 2 }, // westbound
-];
+export const STOP_CONTROLS: readonly StopControl[] = allApproaches().map((a) => ({
+  name: a.name,
+  x: a.x,
+  z: a.z,
+  approachHeading: a.heading,
+}));
 
 /** How far ahead a stop control is announced. */
 export const STOP_LOOKAHEAD_M = 30;

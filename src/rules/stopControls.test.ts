@@ -17,7 +17,7 @@ describe("stopSignAhead", () => {
     // Northbound (heading 0) in the right lane, well south of the junction.
     const ahead = stopSignAhead(2.75, -20, 0);
     expect(ahead).not.toBeNull();
-    expect(ahead!.name).toBe("S");
+    expect(ahead!.name).toBe("0:0:S"); // origin intersection, south approach
     expect(ahead!.distance).toBeCloseTo(20 - 6.1, 1);
   });
 
@@ -50,6 +50,6 @@ describe("stopSignAhead", () => {
   it("sees the west limit line when driving east toward it", () => {
     const ahead = stopSignAhead(-20, -2.75, Math.PI / 2);
     expect(ahead).not.toBeNull();
-    expect(ahead!.name).toBe("W");
+    expect(ahead!.name).toBe("0:0:W");
   });
 });
