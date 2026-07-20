@@ -51,15 +51,15 @@ describe("stepCar longitudinal behaviour", () => {
     expect(next.speed).toBe(0);
   });
 
-  it("engages reverse once stopped and brake is still held", () => {
-    const stopped = spawnState();
-    const reversing = drive(stopped, { ...NEUTRAL, brake: 1 }, 30);
-    expect(reversing.speed).toBeLessThan(0);
+  it("brake holds the car at a stop and never reverses", () => {
+    const braked = drive(spawnState(), { ...NEUTRAL, brake: 1 }, 120);
+    expect(braked.speed).toBe(0);
   });
 
-  it("clamps to the reverse speed cap", () => {
-    const reversing = drive(spawnState(), { ...NEUTRAL, brake: 1 }, 2000);
-    expect(reversing.speed).toBeCloseTo(-DRIVING.maxReverse, 5);
+  it("braking from speed settles at exactly zero and stays there", () => {
+    const rolling: CarState = { ...spawnState(), speed: 12 };
+    const braked = drive(rolling, { ...NEUTRAL, brake: 1 }, 300);
+    expect(braked.speed).toBe(0);
   });
 
   it("clamps to the forward speed cap", () => {

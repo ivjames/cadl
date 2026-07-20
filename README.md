@@ -29,7 +29,7 @@ npm run dev
 Desktop keyboard:
 
 - `W` / `Arrow Up`: accelerate
-- `S` / `Arrow Down`: brake, then reverse once stopped
+- `S` / `Arrow Down`: brake to a stop
 - `A` / `Arrow Left`: steer left
 - `D` / `Arrow Right`: steer right
 - `Z` / `,`: signal left · `X` / `.`: signal right (auto-cancels after the turn)
