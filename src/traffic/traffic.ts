@@ -22,6 +22,17 @@ export interface TrafficCar {
   clearedKey?: string | null;
   /** Seconds waited at the current stop line. */
   waited?: number;
+  /** Active turn through a junction: the axis heading to pivot toward. */
+  turn?: TurnState | null;
+  /** Turn-signal state: -1 = left, 1 = right, 0/undefined = off. */
+  blinker?: -1 | 0 | 1;
+  /** Key of the junction this car last turned at (so it turns once per pass). */
+  turnedKey?: string | null;
+}
+
+/** A turn in progress: pivot the heading toward `toH` (an exact axis heading). */
+export interface TurnState {
+  toH: number;
 }
 
 export interface Pose {
@@ -38,6 +49,10 @@ const SAFE_GAP = 8; // start slowing within this
 const STOP_GAP = 3.5; // fully stopped by this
 const LINE_DECEL = 13; // start braking for a stop line within this
 const STOP_WAIT = 0.7; // seconds to sit at a stop line before proceeding
+const TURN_YAW_RATE = 1.7; // rad/s pivot rate through a turn
+const TURN_SPEED = 4.5; // m/s while turning (slower than cruise)
+const TURN_ENTRY_RADIUS = 1.6; // distance from junction centre to begin a turn
+const HALF_PI = Math.PI / 2;
 
 /** Deterministic starting fleet spread across several lanes and directions. */
 export function createTraffic(): TrafficCar[] {
@@ -113,6 +128,47 @@ function approach(current: number, target: number, up: number, down: number): nu
   return target > current ? Math.min(current + up, target) : Math.max(current - down, target);
 }
 
+/** Wrap a heading into (-π, π]. */
+function wrapAngle(a: number): number {
+  let h = a % (Math.PI * 2);
+  if (h > Math.PI) h -= Math.PI * 2;
+  if (h <= -Math.PI) h += Math.PI * 2;
+  return h;
+}
+
+/**
+ * Deterministic turn choice at a junction (no RNG, so the world is repeatable):
+ * -1 = left, 1 = right, 0 = straight. Most cars go straight; a fifth turn each
+ * way. Hashed from the car id + junction key so a given car turns the same way
+ * at a given junction every pass.
+ */
+export function turnDecisionFor(id: number, key: string): -1 | 0 | 1 {
+  const s = `${id}#${key}`;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const m = (h >>> 0) % 10;
+  if (m < 2) return -1;
+  if (m < 4) return 1;
+  return 0;
+}
+
+/**
+ * Snap a just-turned car onto the correct right-hand lane of its new road.
+ * For N/S travel the lane is set by X; for E/W travel by Z. `heading` is the
+ * exact post-turn axis heading.
+ */
+function snapToLane(x: number, z: number, heading: number): { x: number; z: number } {
+  if (Math.abs(Math.cos(heading)) > 0.5) {
+    // Travelling along Z (north/south): right lane offsets X by +LANE·cos h.
+    return { x: nearestRoad(x) + LANE * Math.round(Math.cos(heading)), z };
+  }
+  // Travelling along X (east/west): right lane offsets Z by -LANE·sin h.
+  return { x, z: nearestRoad(z) - LANE * Math.round(Math.sin(heading)) };
+}
+
 /** Nearest forward-cone distance to something the car must yield to. */
 function gapAhead(car: TrafficCar, cars: readonly TrafficCar[], player: Pose | null): number {
   const fx = Math.sin(car.heading);
@@ -143,6 +199,25 @@ export function stepTraffic(
   player: Pose | null = null,
 ): TrafficCar[] {
   return cars.map((car) => {
+    // Mid-turn: pivot the heading toward the target axis, creeping through the
+    // box. Normal lane/stop/gap logic (which assumes axis alignment) is paused
+    // until the turn completes and the car snaps back onto a lane.
+    if (car.turn) {
+      const remaining = wrapAngle(car.turn.toH - car.heading);
+      const stepYaw = Math.sign(remaining) * Math.min(Math.abs(remaining), TURN_YAW_RATE * dt);
+      let heading = car.heading + stepYaw;
+      const speed = approach(car.speed, TURN_SPEED, ACCEL * dt, DECEL * dt);
+      let x = wrapWorld(car.x + Math.sin(heading) * speed * dt);
+      let z = wrapWorld(car.z + Math.cos(heading) * speed * dt);
+      if (Math.abs(wrapAngle(car.turn.toH - heading)) < 0.02) {
+        // Turn complete: lock the exact heading and drop onto the new lane.
+        heading = wrapAngle(car.turn.toH);
+        ({ x, z } = snapToLane(x, z, heading));
+        return { ...car, heading, speed, x, z, turn: null, blinker: 0 };
+      }
+      return { ...car, heading, speed, x, z };
+    }
+
     // Yield to whatever's ahead (leaders, cross traffic, the player).
     let target = speedFromGap(gapAhead(car, cars, player));
 
@@ -169,6 +244,26 @@ export function stepTraffic(
     const speed = approach(car.speed, target, ACCEL * dt, DECEL * dt);
     const x = wrapWorld(car.x + Math.sin(car.heading) * speed * dt);
     const z = wrapWorld(car.z + Math.cos(car.heading) * speed * dt);
+
+    // Begin a turn on reaching a junction centre (once per junction, while
+    // moving). The signal lights for the chosen side and the pivot takes over
+    // next frame via the branch above.
+    const jcx = nearestRoad(x);
+    const jcz = nearestRoad(z);
+    const key = `${jcx}:${jcz}`;
+    // Distance along the direction of travel to the junction centre (the lateral
+    // lane offset is ignored — the car reaches the box when its along-axis
+    // position lines up with the centre).
+    const alongDist = Math.abs(Math.cos(car.heading)) > 0.5 ? Math.abs(z - jcz) : Math.abs(x - jcx);
+    if (speed > 1 && car.turnedKey !== key && alongDist < TURN_ENTRY_RADIUS) {
+      const side = turnDecisionFor(car.id, key);
+      if (side !== 0) {
+        // Left turn decreases heading; right increases it (driving.ts convention).
+        const toH = wrapAngle(car.heading + side * HALF_PI);
+        return { ...car, speed, x, z, clearedKey, waited, turn: { toH }, blinker: side, turnedKey: key };
+      }
+      return { ...car, speed, x, z, clearedKey, waited, turnedKey: key };
+    }
     return { ...car, speed, x, z, clearedKey, waited };
   });
 }

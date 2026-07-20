@@ -14,9 +14,15 @@ const PAINT = [
   new Color3(0.4, 0.25, 0.5),
 ];
 
+const AMBER_ON = new Color3(1, 0.62, 0);
+const AMBER_OFF = new Color3(0.28, 0.17, 0.02);
+
 /** Renders the ambient traffic cars; `sync` pushes the pure states each frame. */
 export class TrafficView {
   private readonly roots: Mesh[] = [];
+  // Per-car amber turn-signal materials, one per side.
+  private readonly leftBlink: StandardMaterial[] = [];
+  private readonly rightBlink: StandardMaterial[] = [];
 
   constructor(scene: Scene, count: number) {
     const glass = new StandardMaterial("trafficGlass", scene);
@@ -72,17 +78,43 @@ export class TrafficView {
         light.parent = root;
       }
 
+      // Amber turn signals at all four corners; one material per side blinks both.
+      const leftMat = new StandardMaterial(`tblinkL-${i}`, scene);
+      leftMat.diffuseColor = AMBER_OFF.clone();
+      leftMat.emissiveColor = AMBER_OFF.clone();
+      const rightMat = new StandardMaterial(`tblinkR-${i}`, scene);
+      rightMat.diffuseColor = AMBER_OFF.clone();
+      rightMat.emissiveColor = AMBER_OFF.clone();
+      for (const [bx, bz, mat] of [
+        [-0.85, 1.95, leftMat],
+        [-0.85, -1.95, leftMat],
+        [0.85, 1.95, rightMat],
+        [0.85, -1.95, rightMat],
+      ] as const) {
+        const b = CreateBox(`tblink-${i}-${bx}-${bz}`, { width: 0.22, height: 0.18, depth: 0.16 }, scene);
+        b.material = mat;
+        b.position.set(bx, 0.55, bz);
+        b.parent = root;
+      }
+      this.leftBlink.push(leftMat);
+      this.rightBlink.push(rightMat);
+
       this.roots.push(root);
     }
   }
 
-  sync(cars: readonly TrafficCar[]): void {
+  /** Push car states; `blinkOn` is the shared blink phase for turn signals. */
+  sync(cars: readonly TrafficCar[], blinkOn = false): void {
     for (let i = 0; i < cars.length; i += 1) {
       const root = this.roots[i];
       const car = cars[i];
       if (!root || !car) continue;
       root.position.set(car.x, 0, car.z);
       root.rotation.y = car.heading;
+      const left = this.leftBlink[i];
+      const right = this.rightBlink[i];
+      if (left) left.emissiveColor = car.blinker === -1 && blinkOn ? AMBER_ON : AMBER_OFF;
+      if (right) right.emissiveColor = car.blinker === 1 && blinkOn ? AMBER_ON : AMBER_OFF;
     }
   }
 }
