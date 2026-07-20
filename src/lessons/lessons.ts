@@ -28,6 +28,7 @@ export const ACHIEVEMENT_LABELS: Record<AchievementKind, string> = {
   parked: "Come to rest inside the marked bay",
   yieldedPedestrian: "Slow to a crawl for a pedestrian in your path",
   yieldedCrossTraffic: "Wait for cross traffic before entering the intersection",
+  keptDistance: "Follow the car ahead at a safe distance",
 };
 
 /**
@@ -69,6 +70,14 @@ export const LESSONS: readonly LessonDef[] = [
     instruction: "Stop at the line, then signal and complete your turn — no speeding.",
     require: ["cleanStop", "signaledTurn"],
     failOn: ["stop", "signal", "speed"],
+    passScore: 80,
+  },
+  {
+    id: "following",
+    title: "Following Distance",
+    instruction: "Catch up to a car ahead and hold a safe gap — three seconds back — without tailgating.",
+    require: ["keptDistance"],
+    failOn: ["follow"],
     passScore: 80,
   },
   {
