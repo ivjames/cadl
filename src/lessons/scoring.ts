@@ -26,11 +26,23 @@ export interface DrivingSample {
 }
 
 export type ViolationKind = "stop" | "speed" | "signal";
+/** Positive things a lesson can require the driver to do. */
+export type AchievementKind = "cleanStop" | "signaledTurn";
 
 export interface Violation {
+  type: "violation";
   kind: ViolationKind;
   message: string;
 }
+
+export interface Achievement {
+  type: "achievement";
+  kind: AchievementKind;
+  message: string;
+}
+
+/** Anything the coach emits in a frame. */
+export type CoachEvent = Violation | Achievement;
 
 export const PENALTIES: Record<ViolationKind, number> = {
   stop: 15,
@@ -59,7 +71,7 @@ const STARTING_SCORE = 100;
 
 export class DrivingCoach {
   private currentScore = STARTING_SCORE;
-  private readonly log: Violation[] = [];
+  private readonly log: CoachEvent[] = [];
 
   // Speeding hysteresis.
   private overLimitTime = 0;
@@ -83,7 +95,21 @@ export class DrivingCoach {
   }
 
   get violations(): readonly Violation[] {
-    return this.log;
+    return this.log.filter((e): e is Violation => e.type === "violation");
+  }
+
+  get achievements(): readonly Achievement[] {
+    return this.log.filter((e): e is Achievement => e.type === "achievement");
+  }
+
+  /** Whether the coach has recorded a given achievement kind at least once. */
+  hasAchievement(kind: AchievementKind): boolean {
+    return this.log.some((e) => e.type === "achievement" && e.kind === kind);
+  }
+
+  /** Whether a given violation kind has occurred at least once. */
+  hasViolation(kind: ViolationKind): boolean {
+    return this.log.some((e) => e.type === "violation" && e.kind === kind);
   }
 
   reset(): void {
@@ -103,9 +129,10 @@ export class DrivingCoach {
   }
 
   /**
-   * Advance one frame. Returns the violation emitted this frame, or null.
+   * Advance one frame. Returns the event emitted this frame (violation or
+   * achievement), or null.
    */
-  observe(sample: DrivingSample, dt: number): Violation | null {
+  observe(sample: DrivingSample, dt: number): CoachEvent | null {
     const headingDelta = this.prevHeading === null ? 0 : sample.heading - this.prevHeading;
     this.prevHeading = sample.heading;
 
@@ -116,18 +143,25 @@ export class DrivingCoach {
     );
   }
 
-  private emit(violation: Violation): Violation {
+  private emit(kind: ViolationKind, message: string): Violation {
+    const violation: Violation = { type: "violation", kind, message };
     this.log.push(violation);
-    this.currentScore = Math.max(0, this.currentScore - PENALTIES[violation.kind]);
+    this.currentScore = Math.max(0, this.currentScore - PENALTIES[kind]);
     return violation;
   }
 
-  private checkSpeeding(sample: DrivingSample, dt: number): Violation | null {
+  private award(kind: AchievementKind, message: string): Achievement {
+    const achievement: Achievement = { type: "achievement", kind, message };
+    this.log.push(achievement);
+    return achievement;
+  }
+
+  private checkSpeeding(sample: DrivingSample, dt: number): CoachEvent | null {
     if (sample.overLimit) {
       this.overLimitTime += dt;
       if (!this.speedingActive && this.overLimitTime >= SPEEDING_GRACE_S) {
         this.speedingActive = true;
-        return this.emit({ kind: "speed", message: "Over the speed limit" });
+        return this.emit("speed", "Over the speed limit");
       }
     } else {
       this.overLimitTime = 0;
@@ -136,7 +170,7 @@ export class DrivingCoach {
     return null;
   }
 
-  private checkStops(sample: DrivingSample): Violation | null {
+  private checkStops(sample: DrivingSample): CoachEvent | null {
     const inZone =
       sample.stopAhead !== null && sample.stopAhead.distance <= STOP_ZONE_M
         ? sample.stopAhead
@@ -165,16 +199,16 @@ export class DrivingCoach {
       this.approachMinMph = Infinity;
       this.approachLastDistance = Infinity;
       if (crossedLine && rolledThrough) {
-        return this.emit({
-          kind: "stop",
-          message: `Rolled the stop (${Math.round(minMph)} mph)`,
-        });
+        return this.emit("stop", `Rolled the stop (${Math.round(minMph)} mph)`);
+      }
+      if (crossedLine) {
+        return this.award("cleanStop", "Full stop at the line");
       }
     }
     return null;
   }
 
-  private checkSignals(sample: DrivingSample, headingDelta: number, dt: number): Violation | null {
+  private checkSignals(sample: DrivingSample, headingDelta: number, dt: number): CoachEvent | null {
     // A single slow frame isn't "straight" — only sustained straightness ends
     // the manoeuvre, so slow (low-speed) turns still accumulate and get graded.
     if (Math.abs(headingDelta) < STRAIGHT_EPSILON) {
@@ -197,12 +231,10 @@ export class DrivingCoach {
       this.turnFlagged = true;
       const turningLeft = this.turnAccum < 0; // left turn decreases heading
       const signalled = turningLeft ? this.sawLeftSignal : this.sawRightSignal;
-      if (!signalled) {
-        return this.emit({
-          kind: "signal",
-          message: `Turned ${turningLeft ? "left" : "right"} without signalling`,
-        });
-      }
+      const way = turningLeft ? "left" : "right";
+      return signalled
+        ? this.award("signaledTurn", `Signalled ${way} turn`)
+        : this.emit("signal", `Turned ${way} without signalling`);
     }
     return null;
   }

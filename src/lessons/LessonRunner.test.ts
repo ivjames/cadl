@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import { LessonRunner } from "./LessonRunner";
+import { LESSONS } from "./lessons";
+import type { DrivingSample } from "./scoring";
+
+const base: DrivingSample = {
+  heading: 0,
+  speedMph: 10,
+  overLimit: false,
+  signal: null,
+  stopAhead: null,
+};
+
+const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;
+
+/** Roll up to the line, stop fully, then cross → a clean-stop achievement. */
+function driveCleanStop(runner: LessonRunner): void {
+  for (let d = 10; d >= 3; d -= 1) {
+    runner.observe({ ...base, speedMph: 6, stopAhead: { name: "S", distance: d } }, 1 / 60);
+  }
+  for (let i = 0; i < 5; i += 1) {
+    runner.observe({ ...base, speedMph: 1, stopAhead: { name: "S", distance: 1 } }, 1 / 60);
+  }
+  runner.observe({ ...base, speedMph: 6, stopAhead: null }, 1 / 60);
+}
+
+/** Roll up to the line at speed and cross without stopping → a stop violation. */
+function driveRolledStop(runner: LessonRunner): void {
+  for (let d = 10; d >= 1; d -= 1) {
+    runner.observe({ ...base, speedMph: 8, stopAhead: { name: "S", distance: d } }, 1 / 60);
+  }
+  runner.observe({ ...base, speedMph: 8, stopAhead: null }, 1 / 60);
+}
+
+function driveTurn(runner: LessonRunner, signal: "left" | null): void {
+  let heading = 0;
+  for (let i = 0; i < 45; i += 1) {
+    heading += -0.025; // sweep left past the turn threshold
+    runner.observe({ ...base, heading, signal }, 1 / 60);
+  }
+}
+
+describe("LessonRunner", () => {
+  it("Free Drive never passes or fails — it's an open scorecard", () => {
+    const runner = new LessonRunner(lesson("free"));
+    driveRolledStop(runner);
+    driveTurn(runner, null);
+    expect(runner.status).toBe("in-progress");
+  });
+
+  it("Stop & Go passes after a clean stop", () => {
+    const runner = new LessonRunner(lesson("stop-go"));
+    driveCleanStop(runner);
+    expect(runner.status).toBe("passed");
+    expect(runner.objectives[0]!.done).toBe(true);
+  });
+
+  it("Stop & Go fails when the stop is rolled", () => {
+    const runner = new LessonRunner(lesson("stop-go"));
+    driveRolledStop(runner);
+    expect(runner.status).toBe("failed");
+    expect(runner.failReasonText).toMatch(/Rolled the stop/);
+  });
+
+  it("Signal Your Turn passes with a signalled turn", () => {
+    const runner = new LessonRunner(lesson("signal-turn"));
+    driveTurn(runner, "left");
+    expect(runner.status).toBe("passed");
+  });
+
+  it("Signal Your Turn fails an unsignalled turn", () => {
+    const runner = new LessonRunner(lesson("signal-turn"));
+    driveTurn(runner, null);
+    expect(runner.status).toBe("failed");
+  });
+
+  it("Full Intersection needs both objectives", () => {
+    const runner = new LessonRunner(lesson("intersection"));
+    driveCleanStop(runner);
+    expect(runner.status).toBe("in-progress"); // turn still owed
+    driveTurn(runner, "left");
+    expect(runner.status).toBe("passed");
+  });
+
+  it("reset returns the lesson to in-progress", () => {
+    const runner = new LessonRunner(lesson("stop-go"));
+    driveRolledStop(runner);
+    expect(runner.status).toBe("failed");
+    runner.reset();
+    expect(runner.status).toBe("in-progress");
+    expect(runner.score).toBe(100);
+  });
+});

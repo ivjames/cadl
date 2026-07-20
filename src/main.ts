@@ -22,7 +22,8 @@ import {
 } from "./vehicle/signals";
 import { isOverLimit, speedLimitAt } from "./rules/speedZones";
 import { stopSignAhead } from "./rules/stopControls";
-import { DrivingCoach } from "./lessons/scoring";
+import { LESSONS } from "./lessons/lessons";
+import { LessonRunner, type LessonStatus } from "./lessons/LessonRunner";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#renderCanvas");
 if (!canvas) throw new Error("Render canvas was not found.");
@@ -70,13 +71,23 @@ function toggleSignal(direction: SignalDirection): void {
   signal = setSignal(signal, direction);
 }
 
-const coach = new DrivingCoach();
+let lessonIndex = 0;
+let runner = new LessonRunner(LESSONS[lessonIndex]!);
 
 function resetVehicle(): void {
   vehicle.reset();
   input.clear(); // reset must also drop any active input state
   signal = initialSignalState();
-  coach.reset();
+  runner.reset();
+}
+
+function loadLesson(index: number): void {
+  lessonIndex = ((index % LESSONS.length) + LESSONS.length) % LESSONS.length;
+  runner = new LessonRunner(LESSONS[lessonIndex]!);
+  vehicle.reset();
+  input.clear();
+  signal = initialSignalState();
+  renderLessonChrome();
 }
 
 // Edge-triggered keyboard shortcuts (held movement keys live in DrivingInput).
@@ -84,6 +95,7 @@ window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
   if (event.code === "KeyC") toggleCamera();
   if (event.code === "KeyR") resetVehicle();
+  if (event.code === "KeyL") loadLesson(lessonIndex + 1);
   if (event.code === "KeyZ" || event.code === "Comma") toggleSignal("left");
   if (event.code === "KeyX" || event.code === "Period") toggleSignal("right");
 });
@@ -107,7 +119,26 @@ const signalLeftButton = document.querySelector<HTMLElement>("#signalLeft");
 const signalRightButton = document.querySelector<HTMLElement>("#signalRight");
 const coachScoreElement = document.querySelector<HTMLElement>("#coachScore");
 const coachFlashElement = document.querySelector<HTMLElement>("#coachFlash");
+const lessonTitleEl = document.querySelector<HTMLElement>("#lessonTitle");
+const lessonInstructionEl = document.querySelector<HTMLElement>("#lessonInstruction");
+const lessonObjectivesEl = document.querySelector<HTMLElement>("#lessonObjectives");
+const lessonStatusEl = document.querySelector<HTMLElement>("#lessonStatus");
+const lessonButton = document.querySelector<HTMLElement>("#lessonButton");
 let flashTimer = 0;
+let lastObjSig = "";
+let lastStatus: LessonStatus | null = null;
+
+function renderLessonChrome(): void {
+  const lesson = LESSONS[lessonIndex]!;
+  if (lessonTitleEl) lessonTitleEl.textContent = lesson.title;
+  if (lessonInstructionEl) lessonInstructionEl.textContent = lesson.instruction;
+}
+
+lessonButton?.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  loadLesson(lessonIndex + 1);
+});
+renderLessonChrome();
 
 let blinkOn = false;
 let blinkTimer = 0;
@@ -154,19 +185,48 @@ engine.runRenderLoop(() => {
     }
   }
 
-  // Coach: grade the frame and surface score + a brief flash on a violation.
-  const violation = coach.observe(
+  // Lesson: grade the frame, then surface score, objectives, status, and a flash.
+  const event = runner.observe(
     { heading: pose.heading, speedMph: pose.speedMph, overLimit: over, signal: signal.active, stopAhead: stop },
     dt,
   );
   if (coachScoreElement) {
-    coachScoreElement.textContent = String(coach.score);
-    coachScoreElement.classList.toggle("warn", coach.score < 90 && coach.score >= 70);
-    coachScoreElement.classList.toggle("bad", coach.score < 70);
+    coachScoreElement.textContent = String(runner.score);
+    coachScoreElement.classList.toggle("warn", runner.score < 90 && runner.score >= 70);
+    coachScoreElement.classList.toggle("bad", runner.score < 70);
+  }
+  if (lessonObjectivesEl) {
+    const objectives = runner.objectives;
+    const sig = `${lessonIndex}:${objectives.map((o) => (o.done ? "1" : "0")).join("")}`;
+    if (sig !== lastObjSig) {
+      lastObjSig = sig;
+      lessonObjectivesEl.innerHTML = objectives
+        .map((o) => `<div class="obj ${o.done ? "done" : ""}">${o.done ? "✓" : "○"} ${o.label}</div>`)
+        .join("");
+    }
+  }
+  if (lessonStatusEl) {
+    const status = runner.status;
+    if (status !== lastStatus) {
+      lastStatus = status;
+      if (status === "passed") {
+        lessonStatusEl.textContent = "✓ Lesson passed";
+        lessonStatusEl.className = "lesson-status passed";
+        lessonStatusEl.hidden = false;
+      } else if (status === "failed") {
+        lessonStatusEl.textContent = `✗ ${runner.failReasonText ?? "Lesson failed"}`;
+        lessonStatusEl.className = "lesson-status failed";
+        lessonStatusEl.hidden = false;
+      } else {
+        lessonStatusEl.hidden = true;
+      }
+    }
   }
   if (coachFlashElement) {
-    if (violation) {
-      coachFlashElement.textContent = `− ${violation.message}`;
+    if (event) {
+      const good = event.type === "achievement";
+      coachFlashElement.textContent = `${good ? "✓" : "−"} ${event.message}`;
+      coachFlashElement.classList.toggle("good", good);
       coachFlashElement.classList.add("show");
       flashTimer = 2.2;
     } else if (flashTimer > 0) {

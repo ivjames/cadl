@@ -156,34 +156,48 @@ body {
   display: none;
 }
 
-/* Coach scorecard, top-centre */
+/* Lesson / coach panel, upper-centre — sits below the top button row so its
+   score can't collide with the top-right controls at any width. */
 .coach {
   position: fixed;
   z-index: 10;
-  top: calc(env(safe-area-inset-top) + 0.9rem);
+  top: calc(env(safe-area-inset-top) + 4.4rem);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.9rem;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.9rem;
   border: 1px solid var(--panel-border);
   border-radius: 0.75rem;
   background: var(--panel-bg);
   box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 25%);
   backdrop-filter: blur(6px);
   pointer-events: none;
-  max-width: min(70vw, 34rem);
+  width: min(84vw, 28rem);
+  text-align: left;
+}
+
+.coach-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.lesson-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  margin-right: auto;
 }
 
 .coach-label {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   letter-spacing: 0.12em;
   opacity: 0.7;
 }
 
 .coach-score {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #46d17f;
@@ -197,8 +211,31 @@ body {
   color: #ff6b5e;
 }
 
+.lesson-instruction {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  opacity: 0.85;
+}
+
+.lesson-objectives {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.72rem;
+}
+
+.lesson-objectives .obj {
+  opacity: 0.65;
+}
+
+.lesson-objectives .obj.done {
+  opacity: 1;
+  color: #46d17f;
+}
+
 .coach-flash {
-  font-size: 0.8rem;
+  min-height: 0.9rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: #ff8177;
   opacity: 0;
@@ -208,8 +245,34 @@ body {
   white-space: nowrap;
 }
 
+.coach-flash.good {
+  color: #46d17f;
+}
+
 .coach-flash.show {
   opacity: 1;
+}
+
+.lesson-status {
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.3rem;
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.lesson-status.passed {
+  background: #1f7a45;
+  color: #eafff2;
+}
+
+.lesson-status.failed {
+  background: #8f2018;
+  color: #ffecea;
+}
+
+.lesson-status[hidden] {
+  display: none;
 }
 
 /* Turn-signal buttons, bottom-centre */
