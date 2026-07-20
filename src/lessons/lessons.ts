@@ -4,6 +4,7 @@
  * {@link LessonRunner} over the driving-coach event stream.
  */
 
+import type { ParkingBay } from "../rules/parking";
 import type { AchievementKind, ViolationKind } from "./scoring";
 
 export interface LessonDef {
@@ -16,13 +17,24 @@ export interface LessonDef {
   failOn: ViolationKind[];
   /** Minimum score required to pass. */
   passScore: number;
+  /** A parking bay to render and grade against (parking lessons only). */
+  bay?: ParkingBay;
 }
 
 /** Human-readable objective labels, shared by the HUD. */
 export const ACHIEVEMENT_LABELS: Record<AchievementKind, string> = {
   cleanStop: "Come to a full stop at the line",
   signaledTurn: "Signal and complete a turn",
+  parked: "Come to rest inside the marked bay",
 };
+
+/**
+ * The bay for the parking lesson: just ahead and to the right of spawn, off the
+ * travel lane (east of the kerb, so ambient traffic doesn't drive through it)
+ * and aligned with the road. It sits in clear view down the chase camera, so
+ * the driver can steer into it forward and use Reverse to straighten up.
+ */
+export const PARKING_BAY: ParkingBay = { cx: 8.5, cz: -12, halfW: 1.7, halfD: 3.2, axis: 0 };
 
 export const LESSONS: readonly LessonDef[] = [
   {
@@ -56,5 +68,14 @@ export const LESSONS: readonly LessonDef[] = [
     require: ["cleanStop", "signaledTurn"],
     failOn: ["stop", "signal", "speed"],
     passScore: 80,
+  },
+  {
+    id: "parking",
+    title: "Pull In & Park",
+    instruction: "Steer into the marked bay on your right and stop fully inside it — use Reverse (R) to straighten up.",
+    require: ["parked"],
+    failOn: [],
+    passScore: 70,
+    bay: PARKING_BAY,
   },
 ];

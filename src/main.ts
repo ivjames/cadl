@@ -15,6 +15,8 @@ import { TrafficView } from "./scene/TrafficView";
 import { createTraffic, leadGapFor, stepTraffic } from "./traffic/traffic";
 import { PedestrianView } from "./scene/PedestrianView";
 import { createPedestrians, pedestrianHazard, stepPedestrians } from "./pedestrians/pedestrians";
+import { ParkingBayView } from "./scene/ParkingBayView";
+import { isParked } from "./rules/parking";
 import { setupTouchControls } from "./ui/TouchControls";
 import { setupSteeringWheel } from "./ui/SteeringWheel";
 import { TrainingVehicle } from "./vehicle/TrainingVehicle";
@@ -29,7 +31,7 @@ import { WORLD } from "./rules/roadGrid";
 import { isOverLimit, speedLimitAt } from "./rules/speedZones";
 import { stopSignAhead } from "./rules/stopControls";
 import { crossTrafficInJunction, intersectionAt } from "./rules/intersections";
-import { LESSONS } from "./lessons/lessons";
+import { LESSONS, PARKING_BAY } from "./lessons/lessons";
 import { LessonRunner, type LessonStatus } from "./lessons/LessonRunner";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#renderCanvas");
@@ -52,6 +54,12 @@ trafficView.sync(traffic);
 let pedestrians = createPedestrians();
 const pedestrianView = new PedestrianView(scene, pedestrians.length);
 pedestrianView.sync(pedestrians);
+
+// The parking bay is drawn once and shown only while a bay-based lesson runs.
+const parkingBayView = new ParkingBayView(scene, PARKING_BAY);
+function syncBayVisibility(): void {
+  parkingBayView.setVisible(LESSONS[lessonIndex]?.bay !== undefined);
+}
 
 // --- Cameras: chase (follow) and overview, both tracking the vehicle root ---
 const followCamera = new FollowCamera("followCamera", new Vector3(0, 5, -10), scene);
@@ -107,6 +115,7 @@ function loadLesson(index: number): void {
   input.clear();
   signal = initialSignalState();
   renderLessonChrome();
+  syncBayVisibility();
 }
 
 // Edge-triggered keyboard shortcuts (held movement keys live in DrivingInput).
@@ -161,9 +170,20 @@ lessonButton?.addEventListener("pointerdown", (event) => {
   loadLesson(lessonIndex + 1);
 });
 renderLessonChrome();
+syncBayVisibility();
 
 let blinkOn = false;
 let blinkTimer = 0;
+
+// Dev-only inspection hook for headless smoke tests (stripped from prod builds).
+if (import.meta.env.DEV) {
+  (window as unknown as { __cadl: () => unknown }).__cadl = () => ({
+    ...vehicle.pose,
+    lesson: LESSONS[lessonIndex]?.id,
+    status: runner.status,
+    reverse: input.inReverse,
+  });
+}
 
 engine.runRenderLoop(() => {
   // Clamp dt so a backgrounded tab regaining focus can't teleport the car.
@@ -233,6 +253,8 @@ engine.runRenderLoop(() => {
   const junction = intersectionAt(pose.x, pose.z);
   const crossTraffic = junction ? crossTrafficInJunction(traffic, junction, pose.heading) : false;
   const pedestrianAhead = pedestrianHazard(pose.x, pose.z, pose.heading, pedestrians);
+  const bay = LESSONS[lessonIndex]?.bay;
+  const parked = bay ? isParked(bay, pose.x, pose.z, pose.heading, pose.speedMph) : false;
   const event = runner.observe(
     {
       heading: pose.heading,
@@ -244,6 +266,7 @@ engine.runRenderLoop(() => {
       junction,
       crossTraffic,
       pedestrianAhead,
+      parked,
     },
     dt,
   );
