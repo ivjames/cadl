@@ -41,19 +41,36 @@ describe("DrivingCoach — speeding", () => {
 });
 
 describe("DrivingCoach — stops", () => {
-  it("flags rolling through a stop without a full stop", () => {
+  it("flags rolling through a stop the car reaches but doesn't stop for", () => {
     const coach = new DrivingCoach();
-    // Approach the stop zone at 8 mph, then leave it still moving.
-    feed(coach, { speedMph: 8, stopAhead: { name: "S", distance: 6 } }, 30);
-    feed(coach, { speedMph: 8, stopAhead: null }, 1);
+    // Roll up to the line (distance shrinking to ~0) at 8 mph, then cross it.
+    for (let d = 10; d >= 1; d -= 1) {
+      coach.observe({ ...base, speedMph: 8, stopAhead: { name: "S", distance: d } }, 1 / 60);
+    }
+    coach.observe({ ...base, speedMph: 8, stopAhead: null }, 1 / 60); // crossed
     expect(coach.violations.some((v) => v.kind === "stop")).toBe(true);
   });
 
-  it("does not flag when the car actually stops in the zone", () => {
+  it("does not flag when the car stops at the line", () => {
     const coach = new DrivingCoach();
-    feed(coach, { speedMph: 6, stopAhead: { name: "S", distance: 10 } }, 10);
-    feed(coach, { speedMph: FULL_STOP_MPH - 0.5, stopAhead: { name: "S", distance: 4 } }, 10);
-    feed(coach, { speedMph: 6, stopAhead: null }, 1); // pull away
+    for (let d = 10; d >= 3; d -= 1) {
+      coach.observe({ ...base, speedMph: 6, stopAhead: { name: "S", distance: d } }, 1 / 60);
+    }
+    for (let i = 0; i < 5; i += 1) {
+      coach.observe(
+        { ...base, speedMph: FULL_STOP_MPH - 0.5, stopAhead: { name: "S", distance: 1 } },
+        1 / 60,
+      );
+    }
+    coach.observe({ ...base, speedMph: 6, stopAhead: null }, 1 / 60); // pull away
+    expect(coach.violations.some((v) => v.kind === "stop")).toBe(false);
+  });
+
+  it("does not flag when the car turns away before reaching the line", () => {
+    const coach = new DrivingCoach();
+    // Enters the zone but leaves it (stopAhead → null) while still ~8 m short.
+    coach.observe({ ...base, speedMph: 8, stopAhead: { name: "S", distance: 8 } }, 1 / 60);
+    coach.observe({ ...base, speedMph: 8, stopAhead: null }, 1 / 60);
     expect(coach.violations.some((v) => v.kind === "stop")).toBe(false);
   });
 });
@@ -90,6 +107,18 @@ describe("DrivingCoach — signals", () => {
       coach.observe({ ...base, heading, signal: null }, 1 / 60);
     }
     expect(coach.violations.length).toBe(0);
+  });
+
+  it("still scores a slow turn where some frames dip below the straight threshold", () => {
+    const coach = new DrivingCoach();
+    let heading = 0;
+    // Alternate real turn frames with tiny sub-threshold dips. The old
+    // single-frame reset never accumulated; the sustained-straight timer does.
+    for (let i = 0; i < 80; i += 1) {
+      heading += i % 2 === 0 ? -0.02 : -0.001;
+      coach.observe({ ...base, heading, signal: null }, 1 / 60);
+    }
+    expect(coach.violations.some((v) => v.kind === "signal")).toBe(true);
   });
 });
 
