@@ -154,12 +154,16 @@ export function createEnvironment(scene: Scene): void {
     slab(scene, `dashEW-${d}`, { width: 4, height: 0.04, depth: 0.16 }, new Vector3(d, 0.1, 0), yellowMat);
   }
 
-  // --- Stop lines: one across the approaching lane on each of the four arms ---
+  // --- Stop lines: one across the approaching (right-hand) lane on each arm.
+  // Lane sides match the stop controls in rules/stopControls.ts and the stop
+  // signs below, so the painted line, the HUD's "stop ahead" measure, and the
+  // sign all refer to the same lane. LANE is the right-lane centre offset.
   const stopOffset = ROAD_HALF + 0.6;
-  slab(scene, "stopS", { width: ROAD_HALF, height: 0.04, depth: 0.5 }, new Vector3(-ROAD_HALF / 2, 0.1, -stopOffset), whiteMat);
-  slab(scene, "stopN", { width: ROAD_HALF, height: 0.04, depth: 0.5 }, new Vector3(ROAD_HALF / 2, 0.1, stopOffset), whiteMat);
-  slab(scene, "stopW", { width: 0.5, height: 0.04, depth: ROAD_HALF }, new Vector3(-stopOffset, 0.1, ROAD_HALF / 2), whiteMat);
-  slab(scene, "stopE", { width: 0.5, height: 0.04, depth: ROAD_HALF }, new Vector3(stopOffset, 0.1, -ROAD_HALF / 2), whiteMat);
+  const LANE = ROAD_HALF / 2;
+  slab(scene, "stopS", { width: ROAD_HALF, height: 0.04, depth: 0.5 }, new Vector3(LANE, 0.1, -stopOffset), whiteMat);
+  slab(scene, "stopN", { width: ROAD_HALF, height: 0.04, depth: 0.5 }, new Vector3(-LANE, 0.1, stopOffset), whiteMat);
+  slab(scene, "stopW", { width: 0.5, height: 0.04, depth: ROAD_HALF }, new Vector3(-stopOffset, 0.1, -LANE), whiteMat);
+  slab(scene, "stopE", { width: 0.5, height: 0.04, depth: ROAD_HALF }, new Vector3(stopOffset, 0.1, LANE), whiteMat);
 
   // --- Curbs + sidewalks in each of the four quadrants beside the roads ---
   const quadrants: Array<[number, number]> = [

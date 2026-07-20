@@ -33,6 +33,8 @@ export const STOP_CONTROLS: readonly StopControl[] = [
 export const STOP_LOOKAHEAD_M = 30;
 /** Heading must be within this of the approach direction to count. */
 export const APPROACH_ANGLE_TOLERANCE = Math.PI / 4;
+/** Max sideways offset from the lane centre before the control is ignored (m). */
+export const STOP_LATERAL_TOLERANCE = 4;
 
 /** Smallest signed difference between two angles, in [-PI, PI]. */
 export function angleDifference(a: number, b: number): number {
@@ -44,13 +46,16 @@ export function angleDifference(a: number, b: number): number {
 
 export interface StopAhead {
   name: string;
-  /** Distance to the limit line (metres). */
+  /** Forward distance to the limit line along the car's heading (metres). */
   distance: number;
 }
 
 /**
- * The nearest stop control the car is approaching (ahead of it, within range,
- * roughly aligned with its heading), or null if none.
+ * The nearest stop control the car is approaching, or null if none. A control
+ * counts only when it is ahead of the car (positive forward projection within
+ * range), close to the car's lane (small lateral offset — so a car well off to
+ * the side of the road isn't warned), and roughly aligned with the approach
+ * heading.
  */
 export function stopSignAhead(
   x: number,
@@ -65,13 +70,15 @@ export function stopSignAhead(
   for (const control of STOP_CONTROLS) {
     const dx = control.x - x;
     const dz = control.z - z;
-    const distance = Math.hypot(dx, dz);
-    if (distance > maxDistance) continue;
-    if (dx * fx + dz * fz <= 0) continue; // behind the car
+    // Split the offset into along-heading (forward) and perpendicular (lateral).
+    const forward = dx * fx + dz * fz;
+    if (forward <= 0 || forward > maxDistance) continue; // behind, or too far ahead
+    const lateral = Math.abs(dx * fz - dz * fx);
+    if (lateral > STOP_LATERAL_TOLERANCE) continue; // off in another lane / off-road
     if (Math.abs(angleDifference(heading, control.approachHeading)) > APPROACH_ANGLE_TOLERANCE) {
       continue; // not aligned with this approach
     }
-    if (!best || distance < best.distance) best = { name: control.name, distance };
+    if (!best || forward < best.distance) best = { name: control.name, distance: forward };
   }
   return best;
 }
