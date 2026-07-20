@@ -13,6 +13,7 @@ import {
   stepCar,
 } from "./driving";
 import { buildingRects, resolveMovement, type Rect } from "../rules/obstacles";
+import { wrapWorld } from "../rules/roadGrid";
 
 const OBSTACLES = buildingRects();
 
@@ -157,9 +158,10 @@ export class TrainingVehicle {
     // along walls and bleed off speed on impact so the car bumps to a stop.
     const obstacles = dynamicObstacles.length > 0 ? [...OBSTACLES, ...dynamicObstacles] : OBSTACLES;
     const moved = resolveMovement(prev.x, prev.z, next.x, next.z, obstacles);
-    this.state = moved.hit
-      ? { ...next, x: moved.x, z: moved.z, speed: next.speed * 0.25 }
-      : next;
+    // Wrap at the world edge so driving off one side reappears on the other.
+    const x = wrapWorld(moved.x);
+    const z = wrapWorld(moved.z);
+    this.state = { ...next, x, z, speed: moved.hit ? next.speed * 0.25 : next.speed };
     this.syncTransform();
   }
 

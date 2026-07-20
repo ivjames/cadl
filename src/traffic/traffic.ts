@@ -9,7 +9,7 @@
  * player. Heading convention matches driving.ts: forward = (sin h, cos h).
  */
 
-import { LANE, WORLD } from "../rules/roadGrid";
+import { LANE, wrapWorld } from "../rules/roadGrid";
 import { angleDifference } from "../rules/stopControls";
 
 export interface TrafficCar {
@@ -33,8 +33,6 @@ const CONE_HALF = 3.2; // lateral tolerance for "ahead of me"
 const SAFE_GAP = 8; // start slowing within this
 const STOP_GAP = 3.5; // fully stopped by this
 
-const half = WORLD / 2;
-
 /** Deterministic starting fleet spread across several lanes and directions. */
 export function createTraffic(): TrafficCar[] {
   const specs: Array<Omit<TrafficCar, "id" | "speed">> = [
@@ -55,8 +53,6 @@ export function createTraffic(): TrafficCar[] {
   ];
   return specs.map((s, id) => ({ id, speed: TRAFFIC_SPEED, ...s }));
 }
-
-const wrap = (v: number): number => (v > half ? v - WORLD : v < -half ? v + WORLD : v);
 
 function approach(current: number, target: number, up: number, down: number): number {
   return target > current ? Math.min(current + up, target) : Math.max(current - down, target);
@@ -98,8 +94,8 @@ export function stepTraffic(
     else if (gap < SAFE_GAP) target = TRAFFIC_SPEED * ((gap - STOP_GAP) / (SAFE_GAP - STOP_GAP));
 
     const speed = approach(car.speed, target, ACCEL * dt, DECEL * dt);
-    const x = wrap(car.x + Math.sin(car.heading) * speed * dt);
-    const z = wrap(car.z + Math.cos(car.heading) * speed * dt);
+    const x = wrapWorld(car.x + Math.sin(car.heading) * speed * dt);
+    const z = wrapWorld(car.z + Math.cos(car.heading) * speed * dt);
     return { ...car, speed, x, z };
   });
 }

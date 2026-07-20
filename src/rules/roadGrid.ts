@@ -30,6 +30,16 @@ export interface Approach {
   heading: number;
 }
 
+/** Wrap a world coordinate so driving off one edge reappears on the opposite
+ *  side — the world is toroidal. Roads span the full extent, so a lane lines up
+ *  with itself across the wrap. */
+export function wrapWorld(v: number): number {
+  const half = WORLD / 2;
+  if (v > half) return v - WORLD;
+  if (v < -half) return v + WORLD;
+  return v;
+}
+
 export function intersections(): Intersection[] {
   const out: Intersection[] = [];
   for (const cx of ROADS) for (const cz of ROADS) out.push({ cx, cz });

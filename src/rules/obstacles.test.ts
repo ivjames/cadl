@@ -39,9 +39,8 @@ describe("obstacles", () => {
     expect(m.hit).toBe(true);
   });
 
-  it("clamps to the world edge", () => {
+  it("does not constrain the world edge (the caller wraps)", () => {
     const m = resolveMovement(160, 0, 400, 0, []);
-    expect(m.x).toBeLessThan(400);
-    expect(m.hit).toBe(true);
+    expect(m).toMatchObject({ x: 400, z: 0, hit: false });
   });
 });

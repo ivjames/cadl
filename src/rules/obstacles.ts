@@ -5,7 +5,7 @@
  * instead of sticking.
  */
 
-import { ROADS, WORLD } from "./roadGrid";
+import { ROADS } from "./roadGrid";
 
 /** Building footprint: an axis-aligned rectangle centred at (cx, cz). */
 export interface Rect {
@@ -48,8 +48,9 @@ export interface Move {
 }
 
 /**
- * Move from (px, pz) toward (nx, nz), blocked by obstacles and the world edge.
- * X and Z are resolved independently so the car can slide along a wall.
+ * Move from (px, pz) toward (nx, nz), blocked by obstacles. X and Z are resolved
+ * independently so the car can slide along a wall. The world edge is not handled
+ * here — the caller wraps the position (the world is toroidal).
  */
 export function resolveMovement(
   px: number,
@@ -68,10 +69,5 @@ export function resolveMovement(
   if (!isBlocked(x, nz, rects, radius)) z = nz;
   else hit = true;
 
-  const limit = WORLD / 2 - 2;
-  const clampedX = Math.max(-limit, Math.min(limit, x));
-  const clampedZ = Math.max(-limit, Math.min(limit, z));
-  if (clampedX !== x || clampedZ !== z) hit = true;
-
-  return { x: clampedX, z: clampedZ, hit };
+  return { x, z, hit };
 }
