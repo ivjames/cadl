@@ -10,6 +10,7 @@ import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { Scene } from "@babylonjs/core/scene";
 import { LANE, ROAD_HALF, ROADS, WORLD, approachesAt, intersections } from "../rules/roadGrid";
 import { BUILDING_D, BUILDING_W, blockCentres } from "../rules/obstacles";
+import { CROSSINGS } from "../pedestrians/pedestrians";
 
 type SignPainter = (ctx: CanvasRenderingContext2D, size: number) => void;
 
@@ -215,6 +216,18 @@ export function createEnvironment(scene: Scene): void {
       posts.push(CreateCylinder("post", { diameter: 0.14, height: 2.3, tessellation: 6 }, scene));
       posts[posts.length - 1]!.position.set(sx, 1.15, sz);
       stopSigns.push(signPanel(scene, sx, sz, a.heading));
+    }
+  }
+
+  // --- Zebra crosswalks where pedestrians cross ---
+  for (const [ax, az, bx, bz] of CROSSINGS) {
+    const crossingX = Math.abs(bz - az) < 0.01; // pedestrians move in X → N-S road
+    for (let k = -2; k <= 2; k += 1) {
+      if (crossingX) {
+        lines.push(box(scene, 11, 0.05, 0.45, (ax + bx) / 2, 0.11, az + k * 0.9));
+      } else {
+        lines.push(box(scene, 0.45, 0.05, 11, ax + k * 0.9, 0.11, (az + bz) / 2));
+      }
     }
   }
 

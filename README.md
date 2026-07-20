@@ -49,8 +49,9 @@ and a "STOP AHEAD" cue when approaching a stop sign.
 
 Ambient AI traffic drives the grid (yields to leaders, cross traffic, and you);
 the car collides with it, and the coach flags following too closely (2-second
-rule), failing to yield to cross traffic at an intersection, and blocking the
-box. Drive off any edge and the world loops back.
+rule), failing to yield to cross traffic at an intersection, blocking the box,
+and not yielding to a pedestrian in a crosswalk. AI traffic stops at stop signs
+and takes turns through junctions. Drive off any edge and the world loops back.
 
 ## Architecture
 
@@ -69,8 +70,10 @@ src/
   lessons/scoring.ts          pure driving coach: grades violations + achievements
   lessons/lessons.ts          data-driven California lesson definitions
   lessons/LessonRunner.ts     runs a lesson over the coach; tracks objectives + pass/fail
-  traffic/traffic.ts          pure ambient-traffic sim (cruise, yield, wrap)
+  traffic/traffic.ts          pure ambient-traffic sim (cruise, stop signs, yield, wrap)
   scene/TrafficView.ts        renders the traffic cars from the sim state
+  pedestrians/pedestrians.ts  pure pedestrian sim (crosswalk crossings + hazard)
+  scene/PedestrianView.ts     renders the pedestrians from the sim state
   scene/createEnvironment.ts  roads, markings, curbs, sidewalks, scenery, traffic signs
   ui/TouchControls.ts         pointer-event wiring for the pedals + buttons
   ui/SteeringWheel.ts         draggable analog steering wheel
