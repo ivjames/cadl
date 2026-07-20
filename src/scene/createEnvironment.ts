@@ -2,69 +2,76 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { Scene } from "@babylonjs/core/scene";
+import { LANE, LINE_OFFSET, ROAD_HALF, ROADS, WORLD, approachesAt, intersections } from "../rules/roadGrid";
 
 type SignPainter = (ctx: CanvasRenderingContext2D, size: number) => void;
 
-/** A post + a self-lit panel textured by `paint`, facing `faceHeading`. */
-function buildSign(
-  scene: Scene,
-  postMat: StandardMaterial,
-  name: string,
-  x: number,
-  z: number,
-  faceHeading: number,
-  paint: SignPainter,
-  panel = 1.3,
-): void {
-  const postHeight = 2.3;
-  const post = CreateCylinder(`${name}-post`, { diameter: 0.14, height: postHeight, tessellation: 8 }, scene);
-  post.material = postMat;
-  post.position.set(x, postHeight / 2, z);
-  post.freezeWorldMatrix();
-
-  const size = 256;
-  const tex = new DynamicTexture(`${name}-tex`, { width: size, height: size }, scene, true);
-  paint(tex.getContext() as unknown as CanvasRenderingContext2D, size);
-  tex.update();
-
-  const mat = new StandardMaterial(`${name}-mat`, scene);
-  mat.diffuseTexture = tex;
-  mat.emissiveTexture = tex; // self-lit so signs read clearly regardless of lighting
-  mat.emissiveColor = new Color3(1, 1, 1);
-  mat.specularColor = new Color3(0, 0, 0);
-
-  const board = CreateBox(`${name}-panel`, { width: panel, height: panel, depth: 0.08 }, scene);
-  board.material = mat;
-  board.position.set(x, postHeight + panel / 2 - 0.2, z);
-  board.rotation.y = faceHeading;
-  board.freezeWorldMatrix();
+function flatMaterial(scene: Scene, name: string, color: Color3): StandardMaterial {
+  const material = new StandardMaterial(name, scene);
+  material.diffuseColor = color;
+  material.specularColor = new Color3(0.04, 0.04, 0.04);
+  return material;
 }
 
+/** A merged, frozen, non-pickable mesh from a group of boxes sharing a material. */
+function merge(scene: Scene, name: string, parts: Mesh[], material: StandardMaterial): void {
+  if (parts.length === 0) return;
+  const mesh = Mesh.MergeMeshes(parts, true, true, undefined, false, false);
+  if (!mesh) return;
+  mesh.name = name;
+  mesh.material = material;
+  mesh.isPickable = false;
+  mesh.freezeWorldMatrix();
+}
+
+function box(scene: Scene, w: number, h: number, d: number, x: number, y: number, z: number): Mesh {
+  const m = CreateBox("part", { width: w, height: h, depth: d }, scene);
+  m.position.set(x, y, z);
+  return m;
+}
+
+/** Spans of a road (along its axis) between intersection junction boxes. */
+function segmentsAlong(): Array<[center: number, length: number]> {
+  const half = WORLD / 2;
+  const segs: Array<[number, number]> = [];
+  let start = -half;
+  for (const cross of ROADS) {
+    const end = cross - ROAD_HALF;
+    if (end > start) segs.push([(start + end) / 2, end - start]);
+    start = cross + ROAD_HALF;
+  }
+  if (half > start) segs.push([(start + half) / 2, half - start]);
+  return segs;
+}
+
+// --- Sign painters (256×256 canvas) ---
 function paintStop(ctx: CanvasRenderingContext2D, s: number): void {
   const c = s / 2;
-  ctx.fillStyle = "#b32217";
-  ctx.fillRect(0, 0, s, s);
+  ctx.clearRect(0, 0, s, s); // transparent corners → octagon silhouette (alpha test)
   ctx.beginPath();
   for (let i = 0; i < 8; i += 1) {
     const a = Math.PI / 8 + (i * Math.PI) / 4;
-    const px = c + s * 0.46 * Math.cos(a);
-    const py = c + s * 0.46 * Math.sin(a);
+    const px = c + s * 0.48 * Math.cos(a);
+    const py = c + s * 0.48 * Math.sin(a);
     if (i) ctx.lineTo(px, py);
     else ctx.moveTo(px, py);
   }
   ctx.closePath();
-  ctx.lineWidth = s * 0.05;
+  ctx.fillStyle = "#b32217";
+  ctx.fill();
+  ctx.lineWidth = s * 0.045;
   ctx.strokeStyle = "#ffffff";
   ctx.stroke();
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `bold ${s * 0.24}px sans-serif`;
+  ctx.font = `bold ${s * 0.26}px sans-serif`;
   ctx.fillText("STOP", c, c);
 }
 
@@ -100,144 +107,162 @@ function paintSchoolZone(ctx: CanvasRenderingContext2D, s: number): void {
   ctx.fillText("20", c, s * 0.74);
 }
 
-/** Half-width of each road (roads are 11 m wide, spanning -5.5..5.5). */
-const ROAD_HALF = 5.5;
-const WORLD = 100;
-
-function flatMaterial(scene: Scene, name: string, color: Color3): StandardMaterial {
-  const material = new StandardMaterial(name, scene);
-  material.diffuseColor = color;
-  material.specularColor = new Color3(0.05, 0.05, 0.05);
-  return material;
+/** Build a shared, self-lit material carrying a painted sign texture. */
+function signMaterial(scene: Scene, name: string, paint: SignPainter, alpha: boolean): StandardMaterial {
+  const size = 256;
+  const tex = new DynamicTexture(name, { width: size, height: size }, scene, true);
+  paint(tex.getContext() as unknown as CanvasRenderingContext2D, size);
+  tex.update();
+  const mat = new StandardMaterial(`${name}-mat`, scene);
+  mat.diffuseTexture = tex;
+  mat.emissiveTexture = tex; // self-lit so signs read clearly regardless of lighting
+  mat.emissiveColor = new Color3(1, 1, 1);
+  mat.specularColor = new Color3(0, 0, 0);
+  if (alpha) {
+    tex.hasAlpha = true;
+    mat.useAlphaFromDiffuseTexture = true;
+    mat.transparencyMode = 1; // ALPHA_TEST — crisp edges, no sort issues
+  }
+  return mat;
 }
 
-function slab(
-  scene: Scene,
-  name: string,
-  size: { width: number; height: number; depth: number },
-  position: Vector3,
-  material: StandardMaterial,
-): Mesh {
-  const box = CreateBox(name, size, scene);
-  box.position = position;
-  box.material = material;
-  box.freezeWorldMatrix(); // static scenery: skip per-frame matrix recompute
-  return box;
+/** A single-sided sign panel facing the driver on `heading` (blank back). */
+function signPanel(scene: Scene, x: number, z: number, heading: number): Mesh {
+  const panel = CreatePlane("sign", { size: 1.3 }, scene);
+  panel.position.set(x, 2.45, z);
+  panel.rotation.y = heading + Math.PI; // front faces the approaching driver
+  return panel;
 }
 
 /**
- * Builds the static training environment: green ground, a four-way asphalt
- * intersection with lane markings and stop lines, raised curbs, sidewalks, and
- * lightweight blockout scenery (trees + buildings). Everything is procedural
- * and frozen — no external assets, cheap to render on mobile.
+ * Builds a large procedural city grid: green ground, a network of asphalt
+ * streets with lane markings and stop lines at every intersection, curbs and
+ * sidewalks, stop / speed-limit / school-zone signs, and blockout buildings and
+ * trees. Static geometry is merged per material so the whole scene stays cheap
+ * to render on mobile.
  */
 export function createEnvironment(scene: Scene): void {
+  const half = WORLD / 2;
   const grassMat = flatMaterial(scene, "grassMat", new Color3(0.22, 0.42, 0.2));
   const asphaltMat = flatMaterial(scene, "asphaltMat", new Color3(0.12, 0.13, 0.15));
   const yellowMat = flatMaterial(scene, "laneYellowMat", new Color3(0.95, 0.78, 0.08));
   const whiteMat = flatMaterial(scene, "laneWhiteMat", new Color3(0.9, 0.9, 0.92));
-  const curbMat = flatMaterial(scene, "curbMat", new Color3(0.75, 0.75, 0.78));
-  const walkMat = flatMaterial(scene, "sidewalkMat", new Color3(0.62, 0.62, 0.64));
+  const curbMat = flatMaterial(scene, "curbMat", new Color3(0.72, 0.72, 0.75));
+  const walkMat = flatMaterial(scene, "sidewalkMat", new Color3(0.6, 0.6, 0.62));
+  const postMat = flatMaterial(scene, "postMat", new Color3(0.5, 0.5, 0.53));
+  const trunkMat = flatMaterial(scene, "trunkMat", new Color3(0.32, 0.2, 0.11));
+  const leafMat = flatMaterial(scene, "leafMat", new Color3(0.16, 0.4, 0.18));
+  const buildingMat = flatMaterial(scene, "buildingMat", new Color3(0.52, 0.52, 0.55));
 
   const ground = CreateGround("ground", { width: WORLD, height: WORLD }, scene);
   ground.material = grassMat;
+  ground.isPickable = false;
   ground.freezeWorldMatrix();
 
-  // --- Roads (a north-south and east-west strip crossing at the origin) ---
-  slab(scene, "roadNS", { width: 11, height: 0.08, depth: WORLD }, new Vector3(0, 0.04, 0), asphaltMat);
-  slab(scene, "roadEW", { width: WORLD, height: 0.08, depth: 11 }, new Vector3(0, 0.04, 0), asphaltMat);
+  const roads: Mesh[] = [];
+  const dashes: Mesh[] = [];
+  const lines: Mesh[] = [];
+  const curbs: Mesh[] = [];
+  const walks: Mesh[] = [];
+  const posts: Mesh[] = [];
+  const stopSigns: Mesh[] = [];
+  const otherSigns: { mesh: Mesh; mat: StandardMaterial }[] = [];
+  const trunks: Mesh[] = [];
+  const canopies: Mesh[] = [];
+  const buildings: Mesh[] = [];
 
-  // --- Dashed centre lines on both roads (skip the intersection box) ---
-  for (let d = -46; d <= 46; d += 8) {
-    if (Math.abs(d) < ROAD_HALF + 2) continue;
-    slab(scene, `dashNS-${d}`, { width: 0.16, height: 0.04, depth: 4 }, new Vector3(0, 0.1, d), yellowMat);
-    slab(scene, `dashEW-${d}`, { width: 4, height: 0.04, depth: 0.16 }, new Vector3(d, 0.1, 0), yellowMat);
+  const nearIntersection = (v: number): boolean => ROADS.some((c) => Math.abs(v - c) < ROAD_HALF + 2);
+
+  // --- Roads, dashes, curbs, sidewalks along both axes ---
+  for (const c of ROADS) {
+    // North-south road at x = c, and east-west road at z = c.
+    roads.push(box(scene, 11, 0.08, WORLD, c, 0.04, 0));
+    roads.push(box(scene, WORLD, 0.08, 11, 0, 0.04, c));
+
+    for (let d = -half + 4; d <= half - 4; d += 8) {
+      if (!nearIntersection(d)) {
+        dashes.push(box(scene, 0.16, 0.04, 4, c, 0.1, d));
+        dashes.push(box(scene, 4, 0.04, 0.16, d, 0.1, c));
+      }
+    }
+
+    for (const [center, length] of segmentsAlong()) {
+      for (const side of [-1, 1]) {
+        curbs.push(box(scene, 0.3, 0.22, length, c + side * (ROAD_HALF + 0.15), 0.11, center));
+        curbs.push(box(scene, length, 0.22, 0.3, center, 0.11, c + side * (ROAD_HALF + 0.15)));
+        walks.push(box(scene, 2.4, 0.16, length, c + side * (ROAD_HALF + 1.5), 0.08, center));
+        walks.push(box(scene, length, 0.16, 2.4, center, 0.08, c + side * (ROAD_HALF + 1.5)));
+      }
+    }
   }
 
-  // --- Stop lines: one across the approaching (right-hand) lane on each arm.
-  // Lane sides match the stop controls in rules/stopControls.ts and the stop
-  // signs below, so the painted line, the HUD's "stop ahead" measure, and the
-  // sign all refer to the same lane. LANE is the right-lane centre offset.
-  const stopOffset = ROAD_HALF + 0.6;
-  const LANE = ROAD_HALF / 2;
-  slab(scene, "stopS", { width: ROAD_HALF, height: 0.04, depth: 0.5 }, new Vector3(LANE, 0.1, -stopOffset), whiteMat);
-  slab(scene, "stopN", { width: ROAD_HALF, height: 0.04, depth: 0.5 }, new Vector3(-LANE, 0.1, stopOffset), whiteMat);
-  slab(scene, "stopW", { width: 0.5, height: 0.04, depth: ROAD_HALF }, new Vector3(-stopOffset, 0.1, -LANE), whiteMat);
-  slab(scene, "stopE", { width: 0.5, height: 0.04, depth: ROAD_HALF }, new Vector3(stopOffset, 0.1, LANE), whiteMat);
-
-  // --- Curbs + sidewalks in each of the four quadrants beside the roads ---
-  const quadrants: Array<[number, number]> = [
-    [1, 1],
-    [1, -1],
-    [-1, 1],
-    [-1, -1],
-  ];
-  const armReach = WORLD / 2 - ROAD_HALF; // length of curb along each road edge
-  const armCentre = ROAD_HALF + armReach / 2;
-  for (const [sx, sz] of quadrants) {
-    // Curb running along the north-south road edge (varies in Z).
-    slab(scene, `curbNS-${sx}-${sz}`, { width: 0.3, height: 0.22, depth: armReach }, new Vector3(sx * (ROAD_HALF + 0.15), 0.11, sz * armCentre), curbMat);
-    // Curb running along the east-west road edge (varies in X).
-    slab(scene, `curbEW-${sx}-${sz}`, { width: armReach, height: 0.22, depth: 0.3 }, new Vector3(sx * armCentre, 0.11, sz * (ROAD_HALF + 0.15)), curbMat);
-    // Sidewalk strips just outside each curb.
-    slab(scene, `walkNS-${sx}-${sz}`, { width: 2.4, height: 0.16, depth: armReach }, new Vector3(sx * (ROAD_HALF + 1.5), 0.08, sz * armCentre), walkMat);
-    slab(scene, `walkEW-${sx}-${sz}`, { width: armReach, height: 0.16, depth: 2.4 }, new Vector3(sx * armCentre, 0.08, sz * (ROAD_HALF + 1.5)), walkMat);
+  // --- Stop lines + stop signs at every approach of every intersection ---
+  for (const { cx, cz } of intersections()) {
+    for (const a of approachesAt(cx, cz)) {
+      // White limit line across the approaching lane, oriented along the road.
+      const alongZ = Math.abs(Math.cos(a.heading)) > 0.5; // S/N approaches run along Z
+      if (alongZ) {
+        lines.push(box(scene, ROAD_HALF, 0.04, 0.5, a.x, 0.1, a.z));
+      } else {
+        lines.push(box(scene, 0.5, 0.04, ROAD_HALF, a.x, 0.1, a.z));
+      }
+      // Stop sign on the right, just outside the line, facing the approach.
+      const sx = a.x + Math.sin(a.heading + Math.PI / 2) * 0.9;
+      const sz = a.z + Math.cos(a.heading + Math.PI / 2) * 0.9;
+      posts.push(CreateCylinder("post", { diameter: 0.14, height: 2.3, tessellation: 6 }, scene));
+      posts[posts.length - 1]!.position.set(sx, 1.15, sz);
+      stopSigns.push(signPanel(scene, sx, sz, a.heading));
+    }
   }
 
-  // --- Trees: trunk + conical canopy, scattered off the roadway ---
-  const trunkMat = flatMaterial(scene, "trunkMat", new Color3(0.32, 0.2, 0.11));
-  const leafMat = flatMaterial(scene, "leafMat", new Color3(0.16, 0.4, 0.18));
-  const treeSpots: Array<[number, number]> = [
-    [12, 12], [12, 26], [26, 12], [12, -14], [24, -22], [14, -30],
-    [-12, 12], [-22, 24], [-14, 30], [-12, -12], [-26, -14], [-14, -28],
-  ];
-  for (const [tx, tz] of treeSpots) {
-    const trunk = CreateCylinder(`trunk-${tx}-${tz}`, { diameter: 0.4, height: 1.6, tessellation: 8 }, scene);
-    trunk.material = trunkMat;
-    trunk.position.set(tx, 0.8, tz);
-    trunk.freezeWorldMatrix();
-    const canopy = CreateCylinder(`canopy-${tx}-${tz}`, { diameterTop: 0, diameterBottom: 2.6, height: 3, tessellation: 10 }, scene);
-    canopy.material = leafMat;
-    canopy.position.set(tx, 3.0, tz);
-    canopy.freezeWorldMatrix();
-  }
+  // --- A speed-limit sign and school-zone signs on the origin east arm ---
+  const stdSign = (x: number, z: number, heading: number, mat: StandardMaterial): void => {
+    const post = CreateCylinder("post", { diameter: 0.14, height: 2.3, tessellation: 6 }, scene);
+    post.position.set(x, 1.15, z);
+    posts.push(post);
+    otherSigns.push({ mesh: signPanel(scene, x, z, heading), mat });
+  };
+  const speedMat = signMaterial(scene, "speedTex", paintSpeedLimit, false);
+  const schoolMat = signMaterial(scene, "schoolTex", paintSchoolZone, false);
+  stdSign(LANE + ROAD_HALF, -16, 0, speedMat); // northbound approaching origin
+  stdSign(9, -ROAD_HALF - 1, Math.PI / 2, schoolMat); // school zone, east arm
+  stdSign(42, ROAD_HALF + 1, -Math.PI / 2, schoolMat);
 
-  // --- Blockout buildings: flat-shaded boxes set back on each block corner ---
-  const buildingColors = [
-    new Color3(0.55, 0.5, 0.45),
-    new Color3(0.45, 0.48, 0.55),
-    new Color3(0.6, 0.55, 0.5),
-    new Color3(0.5, 0.52, 0.5),
-  ];
-  const buildingSpots: Array<[number, number, number, number]> = [
-    // x, z, width, depth
-    [22, 22, 14, 12],
-    [-24, 20, 12, 16],
-    [20, -26, 16, 12],
-    [-22, -24, 12, 14],
-    [34, 8, 10, 20],
-    [-34, -8, 10, 20],
-  ];
-  buildingSpots.forEach(([bx, bz, bw, bd], index) => {
-    const height = 6 + ((index * 3) % 9);
-    const mat = flatMaterial(scene, `buildingMat-${index}`, buildingColors[index % buildingColors.length]!);
-    slab(scene, `building-${index}`, { width: bw, height, depth: bd }, new Vector3(bx, height / 2, bz), mat);
+  // --- Buildings + trees, one cluster per city block ---
+  const mids = ROADS.slice(0, -1).map((v, i) => (v + ROADS[i + 1]!) / 2);
+  mids.forEach((bx, ix) => {
+    mids.forEach((bz, iz) => {
+      const height = 7 + ((ix * 3 + iz * 5) % 12);
+      buildings.push(box(scene, 22, height, 20, bx, height / 2, bz));
+      // A couple of trees near the block's road-facing corner.
+      const treeSpots: Array<[number, number]> = [
+        [bx - 16, bz - 16],
+        [bx + 16, bz + 15],
+      ];
+      for (const [tx, tz] of treeSpots) {
+        const trunk = CreateCylinder("trunk", { diameter: 0.4, height: 1.6, tessellation: 6 }, scene);
+        trunk.position.set(tx, 0.8, tz);
+        trunks.push(trunk);
+        const canopy = CreateCylinder("canopy", { diameterTop: 0, diameterBottom: 2.6, height: 3, tessellation: 8 }, scene);
+        canopy.position.set(tx, 3.0, tz);
+        canopies.push(canopy);
+      }
+    });
   });
 
-  // --- Traffic signs (a sign faces the driver approaching it) ---
-  const postMat = flatMaterial(scene, "signPostMat", new Color3(0.55, 0.55, 0.58));
-  const HALF_PI = Math.PI / 2;
-
-  // Stop signs on the right of each approach, just outside the junction.
-  buildSign(scene, postMat, "stopS", 6.3, -6.5, Math.PI, paintStop);
-  buildSign(scene, postMat, "stopN", -6.3, 6.5, 0, paintStop);
-  buildSign(scene, postMat, "stopW", -6.5, -6.3, Math.PI + HALF_PI, paintStop);
-  buildSign(scene, postMat, "stopE", 6.5, 6.3, HALF_PI, paintStop);
-
-  // Speed-limit sign well south of the junction for the northbound approach.
-  buildSign(scene, postMat, "speed25", 6.3, -20, Math.PI, paintSpeedLimit);
-
-  // School-zone signs bracketing the east arm of the E–W road (the 20 mph zone).
-  buildSign(scene, postMat, "schoolW", 9, -6.5, Math.PI + HALF_PI, paintSchoolZone);
-  buildSign(scene, postMat, "schoolE", 42, 6.5, HALF_PI, paintSchoolZone);
+  merge(scene, "roads", roads, asphaltMat);
+  merge(scene, "dashes", dashes, yellowMat);
+  merge(scene, "stopLines", lines, whiteMat);
+  merge(scene, "curbs", curbs, curbMat);
+  merge(scene, "sidewalks", walks, walkMat);
+  merge(scene, "signPosts", posts, postMat);
+  merge(scene, "stopSigns", stopSigns, signMaterial(scene, "stopTex", paintStop, true));
+  merge(scene, "trunks", trunks, trunkMat);
+  merge(scene, "canopies", canopies, leafMat);
+  merge(scene, "buildings", buildings, buildingMat);
+  for (const { mesh, mat } of otherSigns) {
+    mesh.material = mat;
+    mesh.isPickable = false;
+    mesh.freezeWorldMatrix();
+  }
 }

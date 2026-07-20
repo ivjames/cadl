@@ -55,8 +55,9 @@ src/
   vehicle/driving.ts          pure, testable arcade driving model (no Babylon)
   vehicle/signals.ts          pure turn-signal state machine w/ auto-cancel
   vehicle/TrainingVehicle.ts  procedural car meshes (incl. blinkers) driven by the model
+  rules/roadGrid.ts           pure city-grid layout (roads, intersections, approaches)
   rules/speedZones.ts         pure speed-limit zones + lookup
-  rules/stopControls.ts       pure stop-sign/limit-line geometry + "stop ahead" detection
+  rules/stopControls.ts       stop-control detection, generated from the road grid
   lessons/scoring.ts          pure driving coach: grades violations + achievements
   lessons/lessons.ts          data-driven California lesson definitions
   lessons/LessonRunner.ts     runs a lesson over the coach; tracks objectives + pass/fail
