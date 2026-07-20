@@ -25,9 +25,13 @@ export interface DrivingSample {
   stopAhead: StopAhead | null;
   /** Centre-to-centre distance to the lead car ahead (m), or null if clear. */
   leadGap: number | null;
+  /** The intersection the car is currently inside, or null. */
+  junction: { cx: number; cz: number } | null;
+  /** Whether cross traffic is in that junction (traffic to yield to). */
+  crossTraffic: boolean;
 }
 
-export type ViolationKind = "stop" | "speed" | "signal" | "follow";
+export type ViolationKind = "stop" | "speed" | "signal" | "follow" | "yield" | "block";
 /** Positive things a lesson can require the driver to do. */
 export type AchievementKind = "cleanStop" | "signaledTurn";
 
@@ -51,6 +55,8 @@ export const PENALTIES: Record<ViolationKind, number> = {
   speed: 10,
   signal: 10,
   follow: 8,
+  yield: 15,
+  block: 10,
 };
 
 /** Speed (mph) below which the car counts as fully stopped. */
@@ -68,6 +74,8 @@ export const FOLLOW_TIME_GAP_S = 2;
 export const FOLLOW_MIN_MPH = 5;
 /** Sustained seconds tailgating before it registers. */
 export const FOLLOW_GRACE_S = 0.6;
+/** Sustained seconds stopped inside a junction before "blocking" registers. */
+export const BLOCK_GRACE_S = 2;
 /** Heading swept (radians) before a manoeuvre counts as a turn. */
 export const TURN_THRESHOLD = 0.7;
 /** Per-frame heading change below which the car isn't turning this frame. */
@@ -89,6 +97,11 @@ export class DrivingCoach {
   // Following-distance hysteresis.
   private followTime = 0;
   private followingActive = false;
+
+  // Intersection conduct.
+  private prevJunction: { cx: number; cz: number } | null = null;
+  private blockTime = 0;
+  private blockFlagged = false;
 
   // Stop tracking: min speed + closest distance seen while approaching a control.
   private approachName: string | null = null;
@@ -132,6 +145,9 @@ export class DrivingCoach {
     this.speedingActive = false;
     this.followTime = 0;
     this.followingActive = false;
+    this.prevJunction = null;
+    this.blockTime = 0;
+    this.blockFlagged = false;
     this.approachName = null;
     this.approachMinMph = Infinity;
     this.approachLastDistance = Infinity;
@@ -154,6 +170,7 @@ export class DrivingCoach {
     return (
       this.checkSpeeding(sample, dt) ??
       this.checkFollowing(sample, dt) ??
+      this.checkIntersection(sample, dt) ??
       this.checkStops(sample) ??
       this.checkSignals(sample, headingDelta, dt)
     );
@@ -201,6 +218,38 @@ export class DrivingCoach {
     } else {
       this.followTime = 0;
       this.followingActive = false;
+    }
+    return null;
+  }
+
+  private checkIntersection(sample: DrivingSample, dt: number): CoachEvent | null {
+    const j = sample.junction;
+    const prev = this.prevJunction;
+    const enteredNew =
+      j !== null && (prev === null || prev.cx !== j.cx || prev.cz !== j.cz);
+    this.prevJunction = j;
+
+    // Failing to yield: entering a junction that cross traffic already occupies.
+    if (enteredNew && sample.crossTraffic) {
+      this.blockTime = 0;
+      this.blockFlagged = false;
+      return this.emit("yield", "Yield to cross traffic");
+    }
+
+    // Blocking: sitting stopped inside the junction box too long.
+    if (j !== null) {
+      if (sample.speedMph < 1.5) {
+        this.blockTime += dt;
+        if (!this.blockFlagged && this.blockTime >= BLOCK_GRACE_S) {
+          this.blockFlagged = true;
+          return this.emit("block", "Blocking the intersection");
+        }
+      } else {
+        this.blockTime = 0;
+      }
+    } else {
+      this.blockTime = 0;
+      this.blockFlagged = false;
     }
     return null;
   }
