@@ -5,8 +5,8 @@ const wall: Rect[] = [{ cx: 0, cz: 0, halfW: 10, halfD: 10 }];
 
 describe("obstacles", () => {
   it("generates one building rect per block", () => {
-    // 5 roads → 4 gaps per axis → 16 blocks.
-    expect(buildingRects()).toHaveLength(16);
+    // 9 roads → 8 gaps per axis → 64 blocks.
+    expect(buildingRects()).toHaveLength(64);
   });
 
   it("blocks a point inside an obstacle", () => {
