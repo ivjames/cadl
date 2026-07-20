@@ -11,6 +11,8 @@ import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import "./style.css";
 import { DrivingInput } from "./input/DrivingInput";
 import { createEnvironment } from "./scene/createEnvironment";
+import { TrafficView } from "./scene/TrafficView";
+import { createTraffic, leadGapFor, stepTraffic } from "./traffic/traffic";
 import { setupTouchControls } from "./ui/TouchControls";
 import { setupSteeringWheel } from "./ui/SteeringWheel";
 import { TrainingVehicle } from "./vehicle/TrainingVehicle";
@@ -38,6 +40,10 @@ new DirectionalLight("sunLight", new Vector3(-0.4, -1, 0.3), scene).intensity = 
 
 createEnvironment(scene);
 const vehicle = new TrainingVehicle(scene);
+
+let traffic = createTraffic();
+const trafficView = new TrafficView(scene, traffic.length);
+trafficView.sync(traffic);
 
 // --- Cameras: chase (follow) and overview, both tracking the vehicle root ---
 const followCamera = new FollowCamera("followCamera", new Vector3(0, 5, -10), scene);
@@ -80,6 +86,8 @@ function resetVehicle(): void {
   input.clear(); // reset must also drop any active input state
   signal = initialSignalState();
   runner.reset();
+  traffic = createTraffic();
+  trafficView.sync(traffic);
 }
 
 function loadLesson(index: number): void {
@@ -151,7 +159,14 @@ engine.runRenderLoop(() => {
   const drive = input.read();
 
   const headingBefore = vehicle.pose.heading;
-  vehicle.update(drive, dt);
+  // Step traffic first (it yields to the player's current position), then feed
+  // the cars in as dynamic obstacles so the player collides with them too.
+  const before = vehicle.pose;
+  traffic = stepTraffic(traffic, dt, { x: before.x, z: before.z, heading: before.heading });
+  trafficView.sync(traffic);
+  const trafficRects = traffic.map((c) => ({ cx: c.x, cz: c.z, halfW: 1.3, halfD: 2.6 }));
+
+  vehicle.update(drive, dt, trafficRects);
   const pose = vehicle.pose;
 
   // Turn signals: advance the state machine, then run the blink timer.
@@ -188,8 +203,16 @@ engine.runRenderLoop(() => {
   }
 
   // Lesson: grade the frame, then surface score, objectives, status, and a flash.
+  const leadGap = leadGapFor(pose, traffic);
   const event = runner.observe(
-    { heading: pose.heading, speedMph: pose.speedMph, overLimit: over, signal: signal.active, stopAhead: stop },
+    {
+      heading: pose.heading,
+      speedMph: pose.speedMph,
+      overLimit: over,
+      signal: signal.active,
+      stopAhead: stop,
+      leadGap,
+    },
     dt,
   );
   if (coachScoreElement) {

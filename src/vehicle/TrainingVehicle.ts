@@ -12,7 +12,7 @@ import {
   speedToMph,
   stepCar,
 } from "./driving";
-import { buildingRects, resolveMovement } from "../rules/obstacles";
+import { buildingRects, resolveMovement, type Rect } from "../rules/obstacles";
 
 const OBSTACLES = buildingRects();
 
@@ -150,12 +150,13 @@ export class TrainingVehicle {
   }
 
   /** Advance the simulation one frame and push the result onto the meshes. */
-  update(input: DriveInput, dt: number): void {
+  update(input: DriveInput, dt: number, dynamicObstacles: readonly Rect[] = []): void {
     const prev = this.state;
     const next = stepCar(prev, input, dt);
-    // Block movement into buildings / off the world; slide along walls and
-    // bleed off speed on impact so the car bumps to a stop instead of clipping.
-    const moved = resolveMovement(prev.x, prev.z, next.x, next.z, OBSTACLES);
+    // Block movement into buildings, traffic cars, and the world edge; slide
+    // along walls and bleed off speed on impact so the car bumps to a stop.
+    const obstacles = dynamicObstacles.length > 0 ? [...OBSTACLES, ...dynamicObstacles] : OBSTACLES;
+    const moved = resolveMovement(prev.x, prev.z, next.x, next.z, obstacles);
     this.state = moved.hit
       ? { ...next, x: moved.x, z: moved.z, speed: next.speed * 0.25 }
       : next;
