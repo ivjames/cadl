@@ -354,8 +354,8 @@ button {
 }
 
 /* Analog pedals: a translucent fill rises from the bottom to show how far the
-   pedal is pressed (`--pedal`, 0..1, set from the touch drag position). Press
-   lower on the pedal for more throttle/brake; drag up/down to feather. */
+   pedal is pressed (`--pedal`, 0..1, set from the touch drag position). Swipe
+   up the pedal for more throttle/brake, down for less. */
 .drive-button.pedal {
   --pedal: 0;
   font-size: 1rem;
