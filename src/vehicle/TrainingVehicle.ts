@@ -36,6 +36,10 @@ export class TrainingVehicle {
   private readonly reverseLampMat: StandardMaterial;
   private readonly reverseOn = new Color3(0.85, 0.85, 0.8);
   private readonly reverseOff = new Color3(0.05, 0.05, 0.05);
+  // Red tail lights that brighten into brake lights when braking.
+  private readonly taillightMat: StandardMaterial;
+  private readonly brakeOn = new Color3(0.95, 0.06, 0.06);
+  private readonly brakeOff = new Color3(0.35, 0.02, 0.02);
 
   constructor(scene: Scene) {
     this.root = new Mesh("vehicleRoot", scene);
@@ -64,7 +68,8 @@ export class TrainingVehicle {
 
     const taillight = new StandardMaterial("carTaillight", scene);
     taillight.diffuseColor = new Color3(0.6, 0.05, 0.05);
-    taillight.emissiveColor = new Color3(0.35, 0.02, 0.02);
+    taillight.emissiveColor = this.brakeOff.clone();
+    this.taillightMat = taillight;
 
     // Front of the car is +Z (the forward heading direction).
     const body = CreateBox(
@@ -164,6 +169,11 @@ export class TrainingVehicle {
     this.reverseLampMat.emissiveColor = on ? this.reverseOn : this.reverseOff;
   }
 
+  /** Brighten the tail lights into brake lights while the brake is applied. */
+  setBrakeLights(on: boolean): void {
+    this.taillightMat.emissiveColor = on ? this.brakeOn : this.brakeOff;
+  }
+
   /** Position, heading, and speed for the HUD and rule checks. */
   get pose(): { x: number; z: number; heading: number; speed: number; speedMph: number } {
     return {
@@ -196,6 +206,7 @@ export class TrainingVehicle {
     this.state = spawnState();
     this.setBlinkers(null, false);
     this.setReverseLamp(false);
+    this.setBrakeLights(false);
     this.syncTransform();
   }
 
