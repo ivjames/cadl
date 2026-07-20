@@ -195,7 +195,7 @@ engine.runRenderLoop(() => {
   // the cars in as dynamic obstacles so the player collides with them too.
   const before = vehicle.pose;
   traffic = stepTraffic(traffic, dt, { x: before.x, z: before.z, heading: before.heading });
-  trafficView.sync(traffic);
+  trafficView.sync(traffic, blinkOn);
   pedestrians = stepPedestrians(pedestrians, dt);
   pedestrianView.sync(pedestrians);
   const trafficRects = traffic.map((c) => ({ cx: c.x, cz: c.z, halfW: 1.3, halfD: 2.6 }));

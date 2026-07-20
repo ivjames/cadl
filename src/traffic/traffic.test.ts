@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { TRAFFIC_SPEED, createTraffic, leadGapFor, stepTraffic, type TrafficCar } from "./traffic";
+import {
+  TRAFFIC_SPEED,
+  createTraffic,
+  leadGapFor,
+  stepTraffic,
+  turnDecisionFor,
+  type TrafficCar,
+} from "./traffic";
+import { LANE, ROADS } from "../rules/roadGrid";
+
+const nearestRoad = (v: number): number =>
+  ROADS.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
 
 describe("traffic sim", () => {
   it("creates a deterministic fleet", () => {
@@ -10,7 +21,8 @@ describe("traffic sim", () => {
   });
 
   it("a lone car cruises forward toward the target speed", () => {
-    let cars: TrafficCar[] = [{ id: 0, x: 2.75, z: 0, heading: 0, speed: TRAFFIC_SPEED }];
+    // Mid-block (away from any junction, where it would otherwise slow to turn).
+    let cars: TrafficCar[] = [{ id: 0, x: 2.75, z: 20, heading: 0, speed: TRAFFIC_SPEED }];
     const z0 = cars[0]!.z;
     for (let i = 0; i < 60; i += 1) cars = stepTraffic(cars, 1 / 60);
     expect(cars[0]!.z).toBeGreaterThan(z0); // moved north
@@ -66,5 +78,66 @@ describe("traffic sim", () => {
       { id: 1, x: -2.75, z: 20, heading: 0, speed: 0 }, // other lane
     ];
     expect(leadGapFor({ x: 2.75, z: 5, heading: 0 }, cars)).toBeNull();
+  });
+});
+
+describe("traffic turning", () => {
+  it("turnDecisionFor is deterministic and returns a valid choice", () => {
+    for (let id = 0; id < 20; id += 1) {
+      const a = turnDecisionFor(id, "0:0");
+      const b = turnDecisionFor(id, "0:0");
+      expect(a).toBe(b);
+      expect([-1, 0, 1]).toContain(a);
+    }
+  });
+
+  it("executes an in-progress right turn and snaps onto the perpendicular lane", () => {
+    // Northbound car mid-junction, told to turn right (toward eastbound, +X).
+    let cars: TrafficCar[] = [
+      { id: 0, x: LANE, z: 0, heading: 0, speed: 4, turn: { toH: Math.PI / 2 }, blinker: 1 },
+    ];
+    for (let i = 0; i < 120; i += 1) cars = stepTraffic(cars, 1 / 60);
+    const car = cars[0]!;
+    expect(car.turn ?? null).toBeNull(); // turn finished
+    expect(car.blinker).toBe(0); // signal cancelled
+    expect(Math.abs(car.heading - Math.PI / 2)).toBeLessThan(0.05); // now eastbound
+    // Eastbound right lane sits at z = roadCentre − LANE.
+    expect(car.z).toBeCloseTo(nearestRoad(car.z) - LANE, 5);
+  });
+
+  it("a cruising car turns at a junction when its decision says so", () => {
+    // Find a car id that turns at the origin, then drive it up to the junction.
+    let id = 0;
+    while (id < 50 && turnDecisionFor(id, "0:0") === 0) id += 1;
+    expect(turnDecisionFor(id, "0:0")).not.toBe(0);
+
+    // Enough frames to brake for the stop line, wait, reach the box, and pivot.
+    let cars: TrafficCar[] = [{ id, x: LANE, z: -12, heading: 0, speed: TRAFFIC_SPEED }];
+    let turned = false;
+    for (let i = 0; i < 480; i += 1) {
+      cars = stepTraffic(cars, 1 / 60);
+      if (Math.abs(Math.sin(cars[0]!.heading)) > 0.5) turned = true; // now heading E/W
+    }
+    expect(turned).toBe(true);
+  });
+
+  it("keeps every car on a valid lane (or mid-turn) over a long run", () => {
+    let cars = createTraffic();
+    for (let step = 0; step < 3600; step += 1) {
+      cars = stepTraffic(cars, 1 / 60);
+      if (step % 300 !== 0) continue; // spot-check periodically
+      for (const c of cars) {
+        expect(Number.isFinite(c.x) && Number.isFinite(c.z) && Number.isFinite(c.heading)).toBe(true);
+        expect(c.speed).toBeGreaterThanOrEqual(-0.01);
+        expect(c.speed).toBeLessThanOrEqual(TRAFFIC_SPEED + 0.01);
+        if (c.turn) continue; // mid-turn cars are between lanes by design
+        // Cruising cars ride a lane: the cross-axis offset from the road is ±LANE.
+        const northSouth = Math.abs(Math.cos(c.heading)) > 0.5;
+        const offset = northSouth
+          ? Math.abs(c.x - nearestRoad(c.x))
+          : Math.abs(c.z - nearestRoad(c.z));
+        expect(Math.abs(offset - LANE)).toBeLessThan(0.5);
+      }
+    }
   });
 });
