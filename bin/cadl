@@ -1,89 +1,302 @@
 #!/usr/bin/env bash
-# cadl — operate CLI for the CADL driver-training sim on the lab980 droplet.
+# cadl — operate CLI for cadl.lab980.com (the CADL driver-training sim).
 #
-# CADL is a static Vite build. On the droplet it lives at /var/www/cadl, is
-# built to dist/, and is served by pm2 (`pm2 serve`) on a local port that nginx
-# proxies to. This script wraps the day-to-day actions; it does NOT provision
-# DNS/nginx/TLS — that is `provision-site cadl ivjames/cadl` (see DEPLOY.md).
+# A proxied app site of the static kind: a Vite build in dist/, served by the
+# dependency-free server.mjs under pm2 on a local port that nginx proxies to.
+# Bring-up is `provision-site cadl ivjames/cadl` (see DEPLOY.md); this script
+# owns everything after that:
 #
-# Install once on the droplet:
-#   ln -sf /var/www/cadl/bin/cadl /usr/local/bin/cadl
+#   cadl deploy    fetch+reset -> npm ci (if deps changed) -> build -> pm2 start/restart -> probe -> save
+#   cadl restart   pm2 restart + probe, no rebuild (refuses without dist/)
+#   cadl logs      tail the pm2 logs for this app
+#   cadl status    HEAD, pm2 state, local + public probe, cert days
+#
+# Env overrides:
+#   CADL_FQDN          default cadl.lab980.com
+#   CADL_BRANCH        default main
+#   CADL_PORT          default: PORT from the app-dir .env (no other default — see port)
+#   CADL_PROBE_TRIES   default 10 (one second apart)
+#
+# The app dir is wherever this script's checkout lives (normally
+# /var/www/cadl) — derived from the script's own path, so the /usr/local/bin
+# symlink resolves back here.
 set -euo pipefail
 
-APP="cadl"
-DIR="/var/www/$APP"
+SELF="$(readlink -f "$0")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+FQDN="${CADL_FQDN:-cadl.lab980.com}"
 BRANCH="${CADL_BRANCH:-main}"
+PROBE_TRIES="${CADL_PROBE_TRIES:-10}"
+APP="cadl"
 
-c_blue=$'\033[1;34m'; c_off=$'\033[0m'
-log() { printf '%s==>%s %s\n' "$c_blue" "$c_off" "$*"; }
-die() { printf 'error: %s\n' "$*" >&2; exit 1; }
-
-port() {
-  # Read the pm2-reserved local port from the app's .env (seeded by provision-site).
-  grep -E '^[[:space:]]*(export[[:space:]]+)?PORT=' "$DIR/.env" 2>/dev/null \
+# The port lives in the app-dir .env: provision-site reserved it there and
+# pointed the nginx proxy_pass at it, and server.mjs reads the same file, so
+# the app and nginx cannot disagree. This script reads it from the same place
+# (CADL_PORT overrides) and hands it to pm2 as PORT, which server.mjs prefers
+# over the file — same value either way. There is deliberately no baked-in
+# fallback: a wrong guess here would probe (and register) the wrong port.
+port() {   # empty when there is no .env or no PORT line (never fails)
+  { grep -E '^[[:space:]]*(export[[:space:]]+)?PORT=' "$ROOT/.env" 2>/dev/null || true; } \
     | head -1 | sed 's/.*PORT=//' | tr -d '"'\'' \t\r'
 }
+PORT="${CADL_PORT:-$(port)}"
+need_port() { [ -n "$PORT" ] || die "$1: no PORT in $ROOT/.env (run provision-site first, or set CADL_PORT)."; }
 
-deploy() {
-  cd "$DIR"
+# The `pm2 start` argv that registers this app the FIRST time. Every later
+# deploy is a `pm2 restart $APP` of that registration, but on a fresh box (or
+# after `pm2 delete`) nothing is registered and restart fails. This is the
+# live registration: server.mjs under node, named cadl — the script is handed
+# to pm2 directly rather than via an ecosystem file (older pm2s ran a .cjs
+# config as a script and never launched the app -> 502). The process gets
+# PORT from pm2_clean below; server.mjs needs nothing else.
+START_CMD=(server.mjs --name "$APP")
+
+c_blue=$'\033[1;34m'; c_yellow=$'\033[1;33m'; c_red=$'\033[1;31m'; c_off=$'\033[0m'
+log()  { printf '%s==>%s %s\n' "$c_blue" "$c_off" "$*"; }
+warn() { printf '%swarn:%s %s\n' "$c_yellow" "$c_off" "$*" >&2; }
+die()  { printf '%serror:%s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'USAGE'
+cadl — operate cadl.lab980.com (Vite build served by server.mjs under pm2 behind nginx).
+
+Usage:
+  cadl deploy [--no-build]   sync, npm ci if deps changed, build, pm2 start/restart, probe, save
+  cadl restart               pm2 restart + probe (refuses when dist/ is missing)
+  cadl logs [-n N]           tail pm2 logs
+  cadl status                HEAD + pm2 + local/public probe + cert
+
+Env: CADL_FQDN, CADL_BRANCH (default main), CADL_PORT (default: PORT from .env),
+     CADL_PROBE_TRIES (default 10).
+USAGE
+}
+
+# The app runs as root under pm2, and pm2 keeps one daemon, process list and
+# dump PER HOME — root's is /root/.pm2. Run as anyone else, or as uid 0 with
+# someone else's HOME (`su root` without `-`, `sudo` preserving HOME), and
+# every pm2 call here talks to a different daemon: `status` says "not
+# registered" while the site is up, and `deploy` starts a second copy.
+need_root() {
+  [ "$(id -u)" -eq 0 ] || die "$1 must run as root (the app's pm2 daemon is root's)."
+  local rhome; rhome="$(getent passwd root | cut -d: -f6)"
+  [ -n "${PM2_HOME:-}" ] || [ "${HOME:-}" = "$rhome" ] \
+    || die "$1: HOME is '${HOME:-}' but root's home is $rhome — pm2 keys its daemon and dump off HOME, so this would talk to a different pm2. Use \`sudo -i\` or \`su -\` (or set PM2_HOME on purpose)."
+}
+
+# ---------------------------------------------------------------------------
+# pm2. Every pm2 call goes through pm2_clean, which launches it from an EMPTY
+# environment plus the handful of variables pm2 itself needs and PORT. pm2
+# copies the environment of the `pm2 start` call into the process, and from
+# there into ~/.pm2/dump.pm2 on save — so a plain `pm2 start` (or `pm2 restart
+# --update-env`, which re-captures the shell on every deploy) from a shell that
+# happens to carry a key gives that key an indefinite on-disk lifetime in the
+# dump. The daemon itself keeps the environment of whichever call first
+# spawned it (visible in its /proc/<pid>/environ for as long as it runs; the
+# processes it starts do NOT inherit it), which is why jlist and logs go
+# through here as well.
+#
+# PORT is handed in because provision-site chose it, this script knows it
+# (from .env), it is not a secret, and the value matches what server.mjs
+# would read from .env anyway. Nothing else the app needs comes from the
+# shell that ran this script.
+# ---------------------------------------------------------------------------
+pm2_clean() {
+  env -i PATH="$PATH" HOME="$HOME" ${PM2_HOME:+PM2_HOME="$PM2_HOME"} \
+    ${TERM:+TERM="$TERM"} LANG=C.UTF-8 ${PORT:+PORT="$PORT"} pm2 "$@"
+}
+
+# `pm2 jlist` is JSON only on a good day: pm2 writes chatter to STDOUT ahead
+# of it — `[PM2] Spawning PM2 daemon…` when the daemon was down, `>>>> In-memory
+# PM2 is out-of-date` after a pm2 upgrade (node22-bump does one). So the JSON
+# is taken from the first line that starts one and parses; anything else is
+# reported as unknown (exit 1), never guessed as "not registered" — deploy
+# would answer that guess with a second `pm2 start` against a live app.
+PM2_JSON='import json, sys
+lines = sys.stdin.read().split("\n")
+for i, line in enumerate(lines):
+    if line[:1] in "[{":
+        try:
+            procs = json.loads("\n".join(lines[i:]))
+        except ValueError:
+            continue
+        if isinstance(procs, list):
+            json.dump(procs, sys.stdout); sys.exit(0)
+sys.exit("no parseable JSON in pm2 jlist output")'
+pm2_jlist() {   # -> JSON array on stdout; 1 with the reason on stderr
+  local jl
+  jl="$(pm2_clean jlist 2>/dev/null)" || { echo "pm2 jlist failed" >&2; return 1; }
+  printf '%s' "$jl" | python3 -c "$PM2_JSON"
+}
+
+# "not registered", "<status>  mode=…", or "unknown (…)" with exit 1.
+pm2_state() {
+  local js
+  js="$(pm2_jlist 2>&1)" || { printf 'unknown (%s)\n' "$js"; return 1; }
+  printf '%s' "$js" | python3 -c 'import json, sys
+p = [x for x in json.load(sys.stdin) if x.get("name") == sys.argv[1]]
+if not p: print("not registered"); raise SystemExit
+e = p[0].get("pm2_env", {})
+print("%s  mode=%s  restarts=%s  uptime-since=%s" % (
+  e.get("status"), e.get("exec_mode"), e.get("restart_time"), e.get("pm_uptime")))' "$APP"
+}
+
+# Names of registered processes that are not online (empty = all online);
+# exit 1 with the reason when the list cannot be read.
+pm2_not_online() {
+  local js
+  js="$(pm2_jlist 2>&1)" || { printf '%s' "$js"; return 1; }
+  printf '%s' "$js" | python3 -c 'import json, sys
+print(" ".join(x.get("name", "?") for x in json.load(sys.stdin)
+               if x.get("pm2_env", {}).get("status") != "online"))'
+}
+
+save_if_online() {
+  # pm2 save overwrites the dump with whatever is running right now, so a save
+  # while anything is down persists a dump that comes back short on the next
+  # reboot. The box rule (lab980 CLAUDE.md) is EVERY app online before a save,
+  # not just this one; otherwise say so and leave the previous dump alone.
+  local bad
+  if ! bad="$(pm2_not_online)"; then
+    warn "skipping pm2 save: cannot read the pm2 process list ($bad)"; return 0
+  fi
+  if [ -n "$bad" ]; then
+    warn "not every pm2 process is online ($bad) — skipping pm2 save so the dump keeps its last good state. Run \`pm2 save\` yourself once they are."
+    return 0
+  fi
+  pm2_clean save
+}
+
+probe() {
+  # Local first, then public: a healthy app behind a broken vhost and a dead
+  # app behind a fine vhost look identical from the outside, and telling them
+  # apart is most of the diagnosis. Both are printed whatever happens.
+  #
+  # Pass/fail is the LOCAL port answering HTTP at all — any status code
+  # (server.mjs answers 500 when dist/ is missing, which is still "up", and
+  # the deploy/restart guards keep that from being the normal case) —
+  # retried up to PROBE_TRIES times a second apart, since node is often
+  # still booting when pm2 first reports it online. The public side only
+  # warns: it also depends on DNS and TLS, which may legitimately not be
+  # there yet on a first bring-up.
+  local lcode="" pcode i
+  for ((i = 1; i <= PROBE_TRIES; i++)); do
+    lcode="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:$PORT/" || true)"
+    [ "$lcode" != "000" ] || lcode=""   # curl's code for "never connected"
+    [ -z "$lcode" ] || break
+    sleep 1
+  done
+  pcode="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$FQDN/" || true)"
+  [ "$pcode" != "000" ] || pcode=""
+  printf 'local:     http://127.0.0.1:%s/  ->  HTTP %s\n' "$PORT" "${lcode:-unreachable after $PROBE_TRIES tries}"
+  printf 'public:    https://%s/  ->  HTTP %s\n' "$FQDN" "${pcode:-unreachable}"
+  [ -n "$lcode" ] || return 1
+  case "$pcode" in
+    ""|5*) warn "app answers locally but https://$FQDN/ is ${pcode:-unreachable} — look at nginx / DNS / TLS, not the app";;
+  esac
+}
+
+# server.mjs serves dist/ and 500s on every request without it, so starting
+# or restarting with no build is never what anyone wants.
+need_dist() { [ -f "$ROOT/dist/index.html" ] || die "$1: no dist/ to serve — run 'cadl deploy' (or npm run build) first."; }
+
+cmd_deploy() {
+  local DO_BUILD=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-build) DO_BUILD=0;;
+      *) die "unknown deploy option: $1 (see --help)";;
+    esac
+    shift
+  done
+  need_root deploy
+  need_port deploy
+  command -v pm2 >/dev/null || die "pm2 not found on PATH."
+  cd "$ROOT"
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$ROOT is not a git clone."
+
+  # Decide start-vs-restart BEFORE the sync: a first deploy that cannot start
+  # should fail here, not after a hard reset and an npm ci it did not need.
+  local state
+  state="$(pm2_state)" || die "cannot tell whether $APP is registered — $state. Sort pm2 out first (pm2 ls), then deploy again."
+
   local before after
-  before="$(git rev-parse HEAD 2>/dev/null || true)"
-  log "fetching origin/$BRANCH"
+  before="$(git rev-parse HEAD)"
+  log "Syncing $ROOT to origin/$BRANCH"
   git fetch --quiet origin "$BRANCH"
-  git reset --hard "origin/$BRANCH"
+  git reset --hard --quiet "origin/$BRANCH"
   after="$(git rev-parse HEAD)"
+  if [ "$before" = "$after" ]; then log "already current (${after:0:7})"
+  else log "${before:0:7} -> ${after:0:7}"; git --no-pager log --oneline "$before..$after"; fi
 
   # npm ci wipes and rebuilds node_modules — the slowest step, and pure waste
-  # when deps are unchanged. Only reinstall when node_modules is missing or the
-  # lockfile actually moved between the old and new commit.
+  # when deps are unchanged. Only reinstall when node_modules is missing or
+  # the lockfile actually moved between the old and new commit. (npm ci, not
+  # npm install: the lockfile is the deployed dependency set.)
   if [ ! -d node_modules ] || ! git diff --quiet "$before" "$after" -- package-lock.json 2>/dev/null; then
-    log "dependencies changed -> npm ci"
-    npm ci
+    log "dependencies changed -> npm ci"; npm ci
   else
     log "dependencies unchanged -> skipping npm ci"
   fi
 
-  log "building dist/"
-  npm run build
-  restart
-  log "deployed $(git rev-parse --short HEAD)"
+  if [ "$DO_BUILD" -eq 1 ]; then log "npm run build"; npm run build; fi
+  need_dist deploy
+
+  case "$state" in
+    "not registered")
+      log "pm2 start ${START_CMD[*]}  ($APP, first registration, port $PORT)"
+      pm2_clean start "${START_CMD[@]}"
+      state="$(pm2_state)" || die "pm2 start ran but the process list is unreadable — $state"
+      [ "$state" != "not registered" ] \
+        || die "pm2 start ran but nothing named $APP is registered — START_CMD must name it (--name $APP)."
+      ;;
+    *)
+      log "pm2 restart $APP"
+      pm2_clean restart "$APP"
+      ;;
+  esac
+  probe || die "$APP is not answering on 127.0.0.1:$PORT — deploy failed, nothing saved. See: $APP logs"
+  save_if_online
+  log "deployed: $(git rev-parse --short HEAD)  $(git log -1 --format=%s)"
 }
 
-restart() {
-  local p; p="$(port)"
-  [ -n "$p" ] || die "no PORT in $DIR/.env (run provision-site first)."
-  [ -d "$DIR/dist" ] || die "no dist/ to serve — run 'cadl deploy' (or npm run build) first."
-  # Start the ESM server directly. pm2 doesn't reliably treat a .cjs ecosystem
-  # file as a *config* (older versions run it as a script and never launch the
-  # app -> 502), so we hand pm2 the actual script. server.mjs reads its port
-  # from .env, so it stays in sync with the nginx proxy_pass on its own.
-  if pm2 describe "$APP" >/dev/null 2>&1; then
-    log "restarting pm2 app '$APP' (server.mjs on :$p)"
-    pm2 restart "$APP"
+cmd_restart() {
+  [ $# -eq 0 ] || die "restart takes no options (see --help)"
+  need_root restart
+  need_port restart
+  need_dist restart
+  command -v pm2 >/dev/null || die "pm2 not found on PATH."
+  local state
+  state="$(pm2_state)" || die "cannot tell whether $APP is registered — $state. Sort pm2 out first (pm2 ls), then retry."
+  [ "$state" != "not registered" ] || die "$APP is not registered with pm2 — nothing to restart. First start is: $APP deploy"
+  log "pm2 restart $APP"
+  pm2_clean restart "$APP"
+  probe || die "$APP is not answering on 127.0.0.1:$PORT after restart. See: $APP logs"
+}
+cmd_logs()    { pm2_clean logs "$APP" "$@"; }
+
+cmd_status() {
+  cd "$ROOT"
+  printf 'checkout:  %s  %s\n' "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)"
+  printf 'dist:      %s\n' "$([ -f dist/index.html ] && echo present || echo missing)"
+  printf 'pm2:       %s\n' "$(pm2_state || true)"
+  if [ -n "$PORT" ]; then probe || true   # status reports, it does not judge — keep going to the cert
+  else warn "no PORT in $ROOT/.env — cannot probe the local port"; fi
+  local pem="/etc/letsencrypt/live/$FQDN/cert.pem"
+  if [ -r "$pem" ]; then
+    local end days
+    end="$(openssl x509 -enddate -noout -in "$pem" | cut -d= -f2)"
+    days=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+    printf 'cert:      %s days remaining (expires %s)\n' "$days" "$end"
   else
-    log "starting pm2 app '$APP' (server.mjs on :$p)"
-    pm2 start "$DIR/server.mjs" --name "$APP"
+    printf 'cert:      (run as root to read expiry)\n'
   fi
-  pm2 save
 }
-
-logs()   { pm2 logs "$APP" "$@"; }
-status() { pm2 describe "$APP"; }
 
 case "${1:-}" in
-  deploy)  deploy ;;
-  restart) restart ;;
-  logs)    shift; logs "$@" ;;
-  status)  status ;;
-  *) cat <<USAGE
-cadl — operate the CADL sim on the lab980 droplet.
-
-Usage: cadl <command>
-  deploy    git pull origin/$BRANCH -> npm ci -> build -> pm2 restart -> pm2 save
-  restart   rebuild-free restart (or first-time pm2 serve of dist/)
-  logs      tail pm2 logs for '$APP'
-  status    pm2 describe '$APP'
-USAGE
-    [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] || [ -z "${1:-}" ] || die "unknown command: $1"
-    ;;
+  deploy)  shift; cmd_deploy "$@";;
+  restart) shift; cmd_restart "$@";;
+  logs)    shift; cmd_logs "$@";;
+  status)  shift; cmd_status "$@";;
+  -h|--help|help|"") usage;;
+  *) die "unknown command: $1 (see --help)";;
 esac
