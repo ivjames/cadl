@@ -31,10 +31,14 @@ The app is a tiny dependency-free static server (`server.mjs`) run under pm2.
 `pm2 start server.mjs --name cadl` itself, from a scrubbed environment (see
 below); every later deploy is a `pm2 restart cadl`. The port is the `PORT`
 `provision-site` reserved in `/var/www/cadl/.env` (8060+) and pointed the
-nginx vhost at: `server.mjs` reads that file, and the CLI reads the same line
-and hands it to pm2 as `PORT`, so the app and nginx can't disagree on the port.
-The CLI has no built-in port of its own on purpose — with no `PORT` in `.env`
-(and no `CADL_PORT`) `deploy` and `restart` refuse rather than guess. Reboot
+nginx vhost at: `server.mjs` reads that file itself on every (re)start, and
+pm2 hands the process nothing — no `PORT`, no env at all, exactly the live
+registration — so the app and nginx can't disagree on the port, and changing
+it in `.env` takes effect on the next restart. (Handing `PORT` in at start
+would pin it in pm2's dump and defeat that.) The CLI reads the same `.env`
+line only to know where to probe; it has no built-in port of its own on
+purpose — with no `PORT` in `.env` (and no `CADL_PORT`) `deploy` and `restart`
+refuse rather than guess. Reboot
 survival relies on the pm2 startup hook already installed on the droplet
 (`systemctl is-enabled pm2-root` → enabled); the `pm2 save` at the end of
 `deploy` writes the dump it replays.
@@ -64,10 +68,12 @@ cadl deploy --no-build   # sync + restart without rebuilding (dist/ must exist)
 folded in, so it behaves like every other `<stub>` on the box:
 
 - **Every pm2 call runs from a scrubbed environment** — `env -i` plus `PATH`,
-  `HOME`, `LANG`, `PM2_HOME`/`TERM` if set, and `PORT`; never `--update-env`.
-  pm2 copies the environment of the `pm2 start` call into the process and
-  into `~/.pm2/dump.pm2`, so nothing exported in the shell that ran `deploy`
-  can reach the process or the dump. `server.mjs` needs nothing but `PORT`.
+  `HOME`, `LANG`, and `PM2_HOME`/`TERM` if set; never `--update-env`. pm2
+  copies the environment of the `pm2 start` call into the process and into
+  `~/.pm2/dump.pm2`, so nothing exported in the shell that ran `deploy` can
+  reach the process or the dump. Unlike the other lab980 CLIs this one does
+  not hand in `PORT` either: `server.mjs` reads it from `.env`, and the live
+  registration carries no env.
 - **`deploy` fails, and saves nothing, when `127.0.0.1:<PORT>` does not answer
   HTTP** (any status code counts; up to `CADL_PROBE_TRIES`, default 10, tries
   a second apart). `pm2 save` runs only after that and only when every
@@ -81,7 +87,8 @@ folded in, so it behaves like every other `<stub>` on the box:
 
 Deploy from `main` — keep it the source of truth. To deploy a feature branch
 for testing, set `CADL_BRANCH=<branch> cadl deploy`. Other overrides:
-`CADL_FQDN`, `CADL_PORT` (instead of `.env`), `CADL_PROBE_TRIES`.
+`CADL_FQDN`, `CADL_PORT` (the probe port, instead of reading `.env`),
+`CADL_PROBE_TRIES`.
 
 ## Verify
 

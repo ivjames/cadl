@@ -32,9 +32,9 @@ APP="cadl"
 # The port lives in the app-dir .env: provision-site reserved it there and
 # pointed the nginx proxy_pass at it, and server.mjs reads the same file, so
 # the app and nginx cannot disagree. This script reads it from the same place
-# (CADL_PORT overrides) and hands it to pm2 as PORT, which server.mjs prefers
-# over the file — same value either way. There is deliberately no baked-in
-# fallback: a wrong guess here would probe (and register) the wrong port.
+# (CADL_PORT overrides) for the PROBE ONLY — it is never handed to pm2, see
+# pm2_clean. There is deliberately no baked-in fallback: a wrong guess here
+# would probe the wrong port.
 port() {   # empty when there is no .env or no PORT line (never fails)
   { grep -E '^[[:space:]]*(export[[:space:]]+)?PORT=' "$ROOT/.env" 2>/dev/null || true; } \
     | head -1 | sed 's/.*PORT=//' | tr -d '"'\'' \t\r'
@@ -45,10 +45,10 @@ need_port() { [ -n "$PORT" ] || die "$1: no PORT in $ROOT/.env (run provision-si
 # The `pm2 start` argv that registers this app the FIRST time. Every later
 # deploy is a `pm2 restart $APP` of that registration, but on a fresh box (or
 # after `pm2 delete`) nothing is registered and restart fails. This is the
-# live registration: server.mjs under node, named cadl — the script is handed
-# to pm2 directly rather than via an ecosystem file (older pm2s ran a .cjs
-# config as a script and never launched the app -> 502). The process gets
-# PORT from pm2_clean below; server.mjs needs nothing else.
+# live registration: server.mjs under node, named cadl, no env — the script
+# is handed to pm2 directly rather than via an ecosystem file (older pm2s ran
+# a .cjs config as a script and never launched the app -> 502). The process
+# reads PORT from .env itself and needs nothing else.
 START_CMD=(server.mjs --name "$APP")
 
 c_blue=$'\033[1;34m'; c_yellow=$'\033[1;33m'; c_red=$'\033[1;31m'; c_off=$'\033[0m'
@@ -85,7 +85,8 @@ need_root() {
 
 # ---------------------------------------------------------------------------
 # pm2. Every pm2 call goes through pm2_clean, which launches it from an EMPTY
-# environment plus the handful of variables pm2 itself needs and PORT. pm2
+# environment plus the handful of variables pm2 itself needs — and NOT PORT,
+# unlike the other lab980 CLIs (see below). pm2
 # copies the environment of the `pm2 start` call into the process, and from
 # there into ~/.pm2/dump.pm2 on save — so a plain `pm2 start` (or `pm2 restart
 # --update-env`, which re-captures the shell on every deploy) from a shell that
@@ -95,14 +96,18 @@ need_root() {
 # processes it starts do NOT inherit it), which is why jlist and logs go
 # through here as well.
 #
-# PORT is handed in because provision-site chose it, this script knows it
-# (from .env), it is not a secret, and the value matches what server.mjs
-# would read from .env anyway. Nothing else the app needs comes from the
-# shell that ran this script.
+# PORT is deliberately NOT handed in, matching the live registration (which
+# carries no env). server.mjs prefers process.env.PORT over the .env file, and
+# pm2 pins the start-time environment into pm2_env and the dump: a PORT given
+# here at first start would outlive a later .env change, so nginx (which
+# provision-site points at .env's PORT) and the app could disagree — the one
+# failure server.mjs reading .env itself exists to rule out. So the process
+# gets its port from .env at every (re)start, and this script's PORT is for
+# the probe only.
 # ---------------------------------------------------------------------------
 pm2_clean() {
   env -i PATH="$PATH" HOME="$HOME" ${PM2_HOME:+PM2_HOME="$PM2_HOME"} \
-    ${TERM:+TERM="$TERM"} LANG=C.UTF-8 ${PORT:+PORT="$PORT"} pm2 "$@"
+    ${TERM:+TERM="$TERM"} LANG=C.UTF-8 pm2 "$@"
 }
 
 # `pm2 jlist` is JSON only on a good day: pm2 writes chatter to STDOUT ahead
@@ -243,7 +248,7 @@ cmd_deploy() {
 
   case "$state" in
     "not registered")
-      log "pm2 start ${START_CMD[*]}  ($APP, first registration, port $PORT)"
+      log "pm2 start ${START_CMD[*]}  ($APP, first registration; it reads PORT=$PORT from .env)"
       pm2_clean start "${START_CMD[@]}"
       state="$(pm2_state)" || die "pm2 start ran but the process list is unreadable — $state"
       [ "$state" != "not registered" ] \
